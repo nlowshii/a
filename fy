@@ -47,6 +47,10 @@ local WindUI = {
     Connections  = {},
     GetIcon      = GetIcon,
     ApplyIcon    = ApplyIcon,
+    _allTabs     = {},
+    _allBtns     = {},
+    _layoutStyle = "Default",
+    _sidebarStyle = "Icon + Text",
 }
 
 local function Tween(obj, info, goal)
@@ -57,7 +61,6 @@ local function Tween(obj, info, goal)
 end
 
 function WindUI:ApplyThemeAccent(newAccent, newAccentDark)
-    -- Simpan warna lama SEBELUM diubah, supaya matching bisa kerja
     local oldAccent = self.CurrentTheme.Accent
 
     self.CurrentTheme.AccentDark = newAccentDark or Color3.fromRGB(
@@ -73,7 +76,6 @@ function WindUI:ApplyThemeAccent(newAccent, newAccentDark)
     local border = self.CurrentTheme.Border
 
     local function isAccent(c)
-        -- Cek apakah warna ini accent lama (tolerance lebih longgar untuk handle variasi)
         return math.abs(c.R - oldAccent.R) < 0.05
            and math.abs(c.G - oldAccent.G) < 0.05
            and math.abs(c.B - oldAccent.B) < 0.05
@@ -86,21 +88,17 @@ function WindUI:ApplyThemeAccent(newAccent, newAccentDark)
     end
 
     local function isNeutral(c)
-        -- Hindari ubah warna putih murni (knob toggle) dan hitam murni
         return (c.R > 0.95 and c.G > 0.95 and c.B > 0.95)
             or (c.R < 0.05 and c.G < 0.05 and c.B < 0.05)
     end
 
     local function UpdateAccentColor(inst)
         for _, child in ipairs(inst:GetDescendants()) do
-            -- Skip swatch buttons dan semua isi-nya agar warna swatch tidak ikut berubah
             if child.Name == "SwatchBtn" then continue end
             local p = child.Parent
             if p and p.Name == "SwatchBtn" then continue end
-            -- Skip elemen yang ditandai NoAccent (floating button section, dll)
             if child.Name == "NoAccent" then continue end
             if p and p.Name == "NoAccent" then continue end
-            -- Skip seluruh subtree dari ancestor NoAccent
             local skipAncestor = false
             local check = child.Parent
             while check and check ~= inst do
@@ -109,35 +107,30 @@ function WindUI:ApplyThemeAccent(newAccent, newAccentDark)
             end
             if skipAncestor then continue end
 
-            -- Frame / TextButton / CanvasGroup background
             if child:IsA("Frame") or child:IsA("TextButton") or child:IsA("CanvasGroup") then
                 local bc = child.BackgroundColor3
                 if isAccent(bc) then
                     child.BackgroundColor3 = newAccent
                 end
             end
-            -- TextLabel / TextButton text color
             if child:IsA("TextLabel") or child:IsA("TextButton") then
                 local tc = child.TextColor3
                 if isAccent(tc) then
                     child.TextColor3 = newAccent
                 end
             end
-            -- ImageLabel color
             if child:IsA("ImageLabel") then
                 local ic = child.ImageColor3
                 if isAccent(ic) then
                     child.ImageColor3 = newAccent
                 end
             end
-            -- UIStroke color (skip border-colored strokes dan neutral)
             if child:IsA("UIStroke") then
                 local sc = child.Color
                 if isAccent(sc) and not isBorder(sc) and not isNeutral(sc) then
                     child.Color = newAccent
                 end
             end
-            -- ScrollingFrame scrollbar
             if child:IsA("ScrollingFrame") then
                 local sc = child.ScrollBarImageColor3
                 if isAccent(sc) then
@@ -148,13 +141,11 @@ function WindUI:ApplyThemeAccent(newAccent, newAccentDark)
     end
 
     UpdateAccentColor(self.ScreenGui)
-    -- Update accent SETELAH loop selesai
     self.CurrentTheme.Accent = newAccent
     if self.NotifyGui then
         UpdateAccentColor(self.NotifyGui)
         self.CurrentTheme.Accent = newAccent
     end
-    -- Update floatGui jika ada
     if floatGui then
         UpdateAccentColor(floatGui)
     end
@@ -181,7 +172,6 @@ function WindUI:Notify(title, text, duration)
 
     local dur = duration or 4
 
-    -- ── Outer card (CanvasGroup for group fade) ──────────────────────────────
     local nFrame = Instance.new("CanvasGroup", self.NotifyGui.Holder)
     nFrame.Size = UDim2.new(1, 0, 0, 72)
     nFrame.BackgroundColor3 = self.CurrentTheme.Secondary
@@ -189,13 +179,11 @@ function WindUI:Notify(title, text, duration)
     nFrame.ClipsDescendants = false
     Instance.new("UICorner", nFrame).CornerRadius = UDim.new(0, 10)
 
-    -- Glass border
     local nStroke = Instance.new("UIStroke", nFrame)
     nStroke.Color = self.CurrentTheme.Border
     nStroke.Thickness = 1
     nStroke.Transparency = 0
 
-    -- Subtle inner top highlight line
     local topShine = Instance.new("Frame", nFrame)
     topShine.Size = UDim2.new(0.6, 0, 0, 1)
     topShine.Position = UDim2.new(0.2, 0, 0, 0)
@@ -204,14 +192,12 @@ function WindUI:Notify(title, text, duration)
     topShine.BorderSizePixel = 0
     Instance.new("UICorner", topShine).CornerRadius = UDim.new(1, 0)
 
-    -- Accent left bar (thick, rounded, full height)
     local accentBar = Instance.new("Frame", nFrame)
     accentBar.Size = UDim2.new(0, 3, 1, -16)
     accentBar.Position = UDim2.new(0, 0, 0, 8)
     accentBar.BackgroundColor3 = self.CurrentTheme.Accent
     Instance.new("UICorner", accentBar).CornerRadius = UDim.new(1, 0)
 
-    -- Icon badge (circle, accent bg)
     local iconBadge = Instance.new("Frame", nFrame)
     iconBadge.Size = UDim2.new(0, 34, 0, 34)
     iconBadge.Position = UDim2.new(0, 14, 0.5, -17)
@@ -231,7 +217,6 @@ function WindUI:Notify(title, text, duration)
     iconImg.ScaleType = Enum.ScaleType.Fit
     task.spawn(function() ApplyIcon(iconImg, GetIcon("bell")) end)
 
-    -- Title label
     local tLbl = Instance.new("TextLabel", nFrame)
     tLbl.Text = title:upper()
     tLbl.Size = UDim2.new(1, -110, 0, 14)
@@ -243,7 +228,6 @@ function WindUI:Notify(title, text, duration)
     tLbl.TextXAlignment = Enum.TextXAlignment.Left
     tLbl.TextTruncate = Enum.TextTruncate.AtEnd
 
-    -- Body label
     local sLbl = Instance.new("TextLabel", nFrame)
     sLbl.Text = text
     sLbl.Size = UDim2.new(1, -68, 0, 28)
@@ -256,7 +240,6 @@ function WindUI:Notify(title, text, duration)
     sLbl.TextYAlignment = Enum.TextYAlignment.Top
     sLbl.TextWrapped = true
 
-    -- Duration badge (top-right, small pill)
     local durBadge = Instance.new("Frame", nFrame)
     durBadge.Size = UDim2.new(0, 0, 0, 16)
     durBadge.AutomaticSize = Enum.AutomaticSize.X
@@ -277,7 +260,6 @@ function WindUI:Notify(title, text, duration)
     durLbl.TextColor3 = self.CurrentTheme.SubText
     durLbl.TextSize = 8
 
-    -- Progress bar (bottom, accent colored)
     local progTrack = Instance.new("Frame", nFrame)
     progTrack.Size = UDim2.new(1, -16, 0, 2)
     progTrack.Position = UDim2.new(0, 8, 1, -6)
@@ -291,7 +273,6 @@ function WindUI:Notify(title, text, duration)
     progFill.BackgroundTransparency = 0.2
     Instance.new("UICorner", progFill).CornerRadius = UDim.new(1, 0)
 
-    -- Close button (×)
     local closeBtn = Instance.new("TextButton", nFrame)
     closeBtn.Size = UDim2.new(0, 18, 0, 18)
     closeBtn.Position = UDim2.new(1, -26, 0, 28)
@@ -309,22 +290,18 @@ function WindUI:Notify(title, text, duration)
     closeIco.ZIndex = 6
     task.spawn(function() ApplyIcon(closeIco, GetIcon("x")) end)
 
-    -- ── Animate IN — expand from 0 height ────────────────────────────────────
     nFrame.Size = UDim2.new(1, 0, 0, 0)
     nFrame.ClipsDescendants = true
     Tween(nFrame, {Time = 0.3, Style = Enum.EasingStyle.Quart, Dir = Enum.EasingDirection.Out},
         {Size = UDim2.new(1, 0, 0, 72)})
 
-    -- Progress shrink
     task.delay(0.4, function()
         Tween(progFill, {Time = dur - 0.4, Style = Enum.EasingStyle.Linear},
             {Size = UDim2.new(0, 0, 1, 0)})
     end)
 
-    -- ── Auto dismiss ─────────────────────────────────────────────────────────
     local dismissed = false
 
-    -- Countdown timer label (e.g. 4s → 3s → 2s → 1s → 0s)
     task.spawn(function()
         local remaining = dur
         while remaining > 0 and not dismissed do
@@ -421,7 +398,6 @@ function WindUI:CreateWindow(title)
     topSep.BackgroundColor3 = self.CurrentTheme.Border
     topSep.BorderSizePixel = 0
 
-    -- PRESTIGE.CC style left bar + stacked title/subtitle
     local accentBar = Instance.new("Frame", topBar)
     accentBar.Size = UDim2.new(0, 2, 0, 26)
     accentBar.Position = UDim2.new(0, 14, 0.5, -13)
@@ -448,7 +424,6 @@ function WindUI:CreateWindow(title)
     subLbl.BackgroundTransparency = 1
     subLbl.TextXAlignment = Enum.TextXAlignment.Left
 
-    -- Search box in topbar (PRESTIGE.CC style)
     local topSearchBox = Instance.new("Frame", topBar)
     topSearchBox.Size = UDim2.new(0, 120, 0, 26)
     topSearchBox.Position = UDim2.new(1, -200, 0.5, -13)
@@ -480,7 +455,6 @@ function WindUI:CreateWindow(title)
     topSearchInput.TextXAlignment = Enum.TextXAlignment.Left
     topSearchInput.ClearTextOnFocus = false
 
-    -- FPS badge (compact, right-aligned)
     local fpsBadge = Instance.new("Frame", topBar)
     fpsBadge.Name = "FPSBadge"
     fpsBadge.Size = UDim2.new(0, 54, 0, 20)
@@ -619,8 +593,6 @@ function WindUI:CreateWindow(title)
     sideSep.BackgroundColor3 = self.CurrentTheme.Border
     sideSep.BorderSizePixel = 0
 
-    -- No search box in sidebar — search is in topbar
-    -- Wire topbar search to tab content filtering
     local searchInput = topSearchInput
 
     local tabContainer = Instance.new("ScrollingFrame", sideBar)
@@ -734,7 +706,6 @@ function WindUI:CreateWindow(title)
         btn.Text = ""
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
 
-        -- Left accent line (PRESTIGE.CC signature indicator)
         local indicator = Instance.new("Frame", btn)
         indicator.Size = UDim2.new(0, 2, 0, 0)
         indicator.Position = UDim2.new(0, 0, 0.5, 0)
@@ -781,11 +752,12 @@ function WindUI:CreateWindow(title)
         scrollPad.PaddingTop = UDim.new(0, 8)
         scrollPad.PaddingBottom = UDim.new(0, 8)
 
-        local Tab = { Container = container_tab, Scroll = scroll, Button = btn }
+        local Tab = { Container = container_tab, Scroll = scroll, Button = btn, _scrollLayout = scrollLayout, _scrollPad = scrollPad, _tabIcon = tabIcon, _tabLbl = tabLbl }
+        table.insert(WindUI._allTabs, Tab)
+        table.insert(WindUI._allBtns, {btn=btn, icon=tabIcon, lbl=tabLbl})
 
         local function Activate()
             if Window.CurrentTab == Tab then return end
-            -- Slide out current tab
             local prev = Window.CurrentTab
             if prev and prev.Container then
                 local prevC = prev.Container
@@ -1021,10 +993,8 @@ function WindUI:CreateWindow(title)
             local MAX_ROWS = 5
             local ITEM_H   = 34
             local visibleH = math.min(#options, MAX_ROWS) * ITEM_H
-            -- header(40) + sep(1) + search(30) + gap(6) + options + pad(6)
             local expandedH = 40 + 1 + 30 + 6 + visibleH + 6
 
-            -- Outer wrapper (clipped)
             local dFrame = Instance.new("Frame", scroll)
             dFrame.Size = UDim2.new(0.96, 0, 0, 40)
             dFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
@@ -1034,7 +1004,6 @@ function WindUI:CreateWindow(title)
             dfStroke.Color = WindUI.CurrentTheme.Border
             dfStroke.Thickness = 1
 
-            -- Accent left bar
             local ddBar = Instance.new("Frame", dFrame)
             ddBar.Size = UDim2.new(0, 3, 0, 22)
             ddBar.Position = UDim2.new(0, 0, 0, 9)
@@ -1047,7 +1016,6 @@ function WindUI:CreateWindow(title)
             header.BackgroundTransparency = 1
             header.Text = ""
 
-            -- Label (left)
             local lbl = Instance.new("TextLabel", header)
             lbl.Text = text
             lbl.Size = UDim2.new(0.45, 0, 1, 0)
@@ -1058,7 +1026,6 @@ function WindUI:CreateWindow(title)
             lbl.Font = WindUI.CurrentFont
             lbl.TextSize = 11
 
-            -- Selected pill badge (right of label)
             local selPill = Instance.new("Frame", header)
             selPill.Size = UDim2.new(0, 0, 0, 22)
             selPill.AutomaticSize = Enum.AutomaticSize.X
@@ -1092,14 +1059,12 @@ function WindUI:CreateWindow(title)
             arrow.ScaleType = Enum.ScaleType.Fit
             task.spawn(function() ApplyIcon(arrow, GetIcon("chevron-down")) end)
 
-            -- Separator
             local divider = Instance.new("Frame", dFrame)
             divider.Size = UDim2.new(1, -24, 0, 1)
             divider.Position = UDim2.new(0, 12, 0, 40)
             divider.BackgroundColor3 = WindUI.CurrentTheme.Border
             divider.BorderSizePixel = 0
 
-            -- Search bar
             local searchFrame = Instance.new("Frame", dFrame)
             searchFrame.Size = UDim2.new(1, -16, 0, 26)
             searchFrame.Position = UDim2.new(0, 8, 0, 45)
@@ -1137,7 +1102,6 @@ function WindUI:CreateWindow(title)
                 Tween(searchStroke, {Time=0.15}, {Color = WindUI.CurrentTheme.Border, Transparency = 0})
             end)
 
-            -- Options container (scrollable)
             local optCont = Instance.new("ScrollingFrame", dFrame)
             optCont.Size = UDim2.new(1, -8, 0, visibleH)
             optCont.Position = UDim2.new(0, 4, 0, 40 + 1 + 30 + 6)
@@ -1163,7 +1127,6 @@ function WindUI:CreateWindow(title)
                 o.Text = ""
                 Instance.new("UICorner", o).CornerRadius = UDim.new(0, 7)
 
-                -- Check mark icon (shown when selected)
                 local checkIco = Instance.new("ImageLabel", o)
                 checkIco.Size = UDim2.new(0, 11, 0, 11)
                 checkIco.Position = UDim2.new(0, 8, 0.5, -5.5)
@@ -1196,7 +1159,6 @@ function WindUI:CreateWindow(title)
                     end
                 end)
                 o.MouseButton1Click:Connect(function()
-                    -- Deselect old
                     for j, btn in ipairs(optButtons) do
                         local prevLbl = btn:FindFirstChildOfClass("TextLabel")
                         local prevIco = btn:FindFirstChildOfClass("ImageLabel")
@@ -1207,14 +1169,12 @@ function WindUI:CreateWindow(title)
                         if prevIco then Tween(prevIco, {Time=0.12}, {ImageTransparency = 1}) end
                         Tween(btn, {Time=0.12}, {BackgroundTransparency = 1})
                     end
-                    -- Select new
                     selected = opt
                     selLbl.Text = opt
                     oLbl.Font = Enum.Font.GothamBold
                     Tween(oLbl, {Time=0.12}, {TextColor3 = WindUI.CurrentTheme.Text})
                     Tween(checkIco, {Time=0.12}, {ImageTransparency = 0})
                     Tween(o, {Time=0.12}, {BackgroundTransparency = 0.85})
-                    -- Collapse
                     expanded = false
                     searchInput.Text = ""
                     for _, btn in ipairs(optButtons) do btn.Visible = true end
@@ -1228,7 +1188,6 @@ function WindUI:CreateWindow(title)
                 optButtons[i] = o
             end
 
-            -- Live search filter
             searchInput:GetPropertyChangedSignal("Text"):Connect(function()
                 local q = searchInput.Text:lower()
                 local count = 0
@@ -1305,7 +1264,6 @@ function WindUI:CreateWindow(title)
             lbl.Font = WindUI.CurrentFont
             lbl.TextSize = 11
 
-            -- Badge count pill (right of label)
             local selPill = Instance.new("Frame", header)
             selPill.Size = UDim2.new(0, 0, 0, 22)
             selPill.AutomaticSize = Enum.AutomaticSize.X
@@ -1413,7 +1371,6 @@ function WindUI:CreateWindow(title)
                 o.Text = ""
                 Instance.new("UICorner", o).CornerRadius = UDim.new(0, 7)
 
-                -- Checkbox box
                 local checkBox = Instance.new("Frame", o)
                 checkBox.Size = UDim2.new(0, 14, 0, 14)
                 checkBox.Position = UDim2.new(0, 8, 0.5, -7)
@@ -1555,7 +1512,6 @@ function WindUI:CreateWindow(title)
             bLbl.TextSize = 11
             bLbl.TextXAlignment = Enum.TextXAlignment.Left
 
-            -- Warning icon on right
             local warnImg = Instance.new("ImageLabel", b)
             warnImg.Size = UDim2.new(0, 11, 0, 11)
             warnImg.Position = UDim2.new(1, -22, 0.5, -5.5)
@@ -1972,7 +1928,6 @@ function WindUI:CreateWindow(title)
         end
 
         function Tab:CreateMultiSection(sectionName, tabs)
-            -- ── Outer card ────────────────────────────────────────────────────
             local msFrame = Instance.new("Frame", scroll)
             msFrame.Size = UDim2.new(0.95, 0, 0, 0)
             msFrame.AutomaticSize = Enum.AutomaticSize.Y
@@ -1986,7 +1941,6 @@ function WindUI:CreateWindow(title)
             local msLayout = Instance.new("UIListLayout", msFrame)
             msLayout.Padding = UDim.new(0, 0)
 
-            -- ── Header row ────────────────────────────────────────────────────
             local msHeader = Instance.new("Frame", msFrame)
             msHeader.Size = UDim2.new(1, 0, 0, 36)
             msHeader.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
@@ -2014,7 +1968,6 @@ function WindUI:CreateWindow(title)
             msHTitle.TextSize = 10
             msHTitle.TextXAlignment = Enum.TextXAlignment.Left
 
-            -- ── Tab bar with sliding indicator ────────────────────────────────
             local tabBarWrapper = Instance.new("Frame", msFrame)
             tabBarWrapper.Size = UDim2.new(1, 0, 0, 36)
             tabBarWrapper.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
@@ -2029,14 +1982,12 @@ function WindUI:CreateWindow(title)
             tabBar.BackgroundTransparency = 0.4
             Instance.new("UICorner", tabBar).CornerRadius = UDim.new(0, 7)
 
-            -- Indicator layer (sibling of tabBar, tidak ikut layout)
             local indicatorLayer = Instance.new("Frame", tabBarWrapper)
             indicatorLayer.Size = UDim2.new(1, -16, 1, -8)
             indicatorLayer.Position = UDim2.new(0, 8, 0, 4)
             indicatorLayer.BackgroundTransparency = 1
             indicatorLayer.ZIndex = 2
 
-            -- Sliding pill indicator
             local tabIndicator = Instance.new("Frame", indicatorLayer)
             tabIndicator.Size = UDim2.new(1 / #tabs, -4, 1, -4)
             tabIndicator.Position = UDim2.new(0, 2, 0, 2)
@@ -2049,18 +2000,15 @@ function WindUI:CreateWindow(title)
             tabIndStroke.Thickness = 1
             tabIndStroke.Transparency = 0.5
 
-            -- Button layout inside tabBar (clean, no indicator interference)
             local tabBtnLayout = Instance.new("UIListLayout", tabBar)
             tabBtnLayout.FillDirection = Enum.FillDirection.Horizontal
             tabBtnLayout.Padding = UDim.new(0, 0)
 
-            -- Separator
             local msSep = Instance.new("Frame", msFrame)
             msSep.Size = UDim2.new(1, 0, 0, 1)
             msSep.BackgroundColor3 = WindUI.CurrentTheme.Border
             msSep.BorderSizePixel = 0
 
-            -- ── Page container ─────────────────────────────────────────────────
             local pageContainer = Instance.new("Frame", msFrame)
             pageContainer.Size = UDim2.new(1, 0, 0, 0)
             pageContainer.AutomaticSize = Enum.AutomaticSize.Y
@@ -2078,7 +2026,6 @@ function WindUI:CreateWindow(title)
             for i, tabDef in ipairs(tabs) do
                 local tabName = tabDef.Name or ("Tab " .. i)
 
-                -- Transparent button sits on top of sliding indicator
                 local tBtn = Instance.new("TextButton", tabBar)
                 tBtn.Size = UDim2.new(1 / #tabs, 0, 1, 0)
                 tBtn.BackgroundTransparency = 1
@@ -2252,13 +2199,11 @@ function WindUI:CreateWindow(title)
                 end
 
                 pageTab.CreateDropdown = function(self, text, options, callback)
-                    -- reuse Tab:CreateDropdown but route to pScroll
                     local fakeTab = {Scroll = pScroll}
                     Tab.CreateDropdown(fakeTab, text, options, callback)
                 end
 
                 pageTab.CreateMultiDropdown = function(self, text, options, callback)
-                    -- reuse Tab:CreateMultiDropdown but route to pScroll
                     local fakeTab = {Scroll = pScroll}
                     Tab.CreateMultiDropdown(fakeTab, text, options, callback)
                 end
@@ -2539,7 +2484,6 @@ function WindUI:CreateWindow(title)
                 if i == 1 then activeTabBtn = tBtn; activePageFrame = pageScroll end
 
                 tBtn.MouseButton1Click:Connect(function()
-                    -- Find current active index
                     local prevIndex = 1
                     local prevPage = nil
                     for _, obj in ipairs(tabObjects) do
@@ -2551,12 +2495,10 @@ function WindUI:CreateWindow(title)
                     end
                     if prevIndex == i then return end
 
-                    -- Slide indicator
                     local targetX = (i - 1) / #tabs
                     Tween(tabIndicator, {Time=0.25, Style=Enum.EasingStyle.Quart, Dir=Enum.EasingDirection.Out},
                         {Position=UDim2.new(targetX, 2, 0, 2)})
 
-                    -- Update labels
                     for _, obj in ipairs(tabObjects) do
                         local isActive = obj.index == i
                         Tween(obj.lbl, {Time=0.2}, {
@@ -2565,7 +2507,6 @@ function WindUI:CreateWindow(title)
                         obj.lbl.Font = isActive and Enum.Font.GothamBold or Enum.Font.GothamMedium
                     end
 
-                    -- Animate msFrame (outer card) only: quick pulse scale
                     local origPos = msFrame.Position
                     Tween(msFrame, {Time=0.1, Style=Enum.EasingStyle.Quart, Dir=Enum.EasingDirection.Out},
                         {BackgroundTransparency=0.15})
@@ -2574,7 +2515,6 @@ function WindUI:CreateWindow(title)
                             {BackgroundTransparency=0})
                     end)
 
-                    -- Switch page instantly (no content animation)
                     if prevPage then
                         prevPage.Visible = false
                     end
@@ -2595,14 +2535,12 @@ function WindUI:CreateWindow(title)
             local SUBBTN_H = 32
             local subH = #subNames * SUBBTN_H + (#subNames - 1) * 3
 
-            -- ── Wrapper in sidebar ──────────────────────────────────────────
             local wrapFrame = Instance.new("Frame", tabContainer)
             wrapFrame.Size = UDim2.new(1, 0, 0, 34)
             wrapFrame.BackgroundTransparency = 1
             wrapFrame.ClipsDescendants = false
             Instance.new("UICorner", wrapFrame).CornerRadius = UDim.new(0, 7)
 
-            -- Group header button
             local dropBtn = Instance.new("TextButton", wrapFrame)
             dropBtn.Size = UDim2.new(1, 0, 0, 34)
             dropBtn.BackgroundColor3 = WindUI.CurrentTheme.Accent
@@ -2641,7 +2579,6 @@ function WindUI:CreateWindow(title)
             dropArrow.ScaleType = Enum.ScaleType.Fit
             task.spawn(function() ApplyIcon(dropArrow, GetIcon("chevron-down")) end)
 
-            -- Sub-tab list container (slides open)
             local subContainer = Instance.new("Frame", wrapFrame)
             subContainer.Size = UDim2.new(1, -10, 0, 0)
             subContainer.Position = UDim2.new(0, 10, 0, 36)
@@ -2671,7 +2608,6 @@ function WindUI:CreateWindow(title)
                 subLbl.TextXAlignment = Enum.TextXAlignment.Left
                 subLbl.ZIndex = 3
 
-                -- ── Sub-tab content area ────────────────────────────────────
                 local subContainer_tab = Instance.new("CanvasGroup", contentArea)
                 subContainer_tab.Size = UDim2.new(1, 0, 1, 0)
                 subContainer_tab.BackgroundTransparency = 1
@@ -2696,7 +2632,6 @@ function WindUI:CreateWindow(title)
 
                 local function ActivateSub()
                     if Window.CurrentTab == SubTab then return end
-                    -- Slide out current tab
                     local prev = Window.CurrentTab
                     if prev and prev.Container then
                         local prevC = prev.Container
@@ -2726,11 +2661,9 @@ function WindUI:CreateWindow(title)
                     subContainer_tab.Visible = true
                     Tween(subContainer_tab, {Time=0.28, Style=Enum.EasingStyle.Quart, Dir=Enum.EasingDirection.Out},
                         {Position=UDim2.new(0,0,0,0), GroupTransparency=0})
-                    -- Active style for sub button
                     Tween(subBtn, {Time = 0.2}, {BackgroundTransparency = 0.84})
                     Tween(subLbl, {Time = 0.2}, {TextColor3 = WindUI.CurrentTheme.Accent})
                     subLbl.Font = Enum.Font.GothamBold
-                    -- Also keep parent tab expanded & highlight
                     Tween(dropLbl, {Time=0.15}, {TextColor3 = WindUI.CurrentTheme.Text})
                     Tween(dropIcon, {Time=0.15}, {ImageColor3 = WindUI.CurrentTheme.Accent})
                 end
@@ -2810,5 +2743,91 @@ function WindUI:CreateWindow(title)
     return Window
 end
 
+function WindUI:SetLayoutStyle(style)
+    self._layoutStyle = style
+    local configs = {
+        ["Compact"]  = {padding=3,  padTop=4,  padBot=4,  itemH=-4},
+        ["Default"]  = {padding=6,  padTop=8,  padBot=8,  itemH=0},
+        ["Cozy"]     = {padding=10, padTop=12, padBot=12, itemH=6},
+    }
+    local cfg = configs[style] or configs["Default"]
+    for _, tab in ipairs(self._allTabs) do
+        if tab._scrollLayout and tab._scrollLayout.Parent then
+            tab._scrollLayout.Padding = UDim.new(0, cfg.padding)
+        end
+        if tab._scrollPad and tab._scrollPad.Parent then
+            tab._scrollPad.PaddingTop    = UDim.new(0, cfg.padTop)
+            tab._scrollPad.PaddingBottom = UDim.new(0, cfg.padBot)
+        end
+        if cfg.itemH ~= 0 then
+            for _, child in ipairs(tab.Scroll:GetChildren()) do
+                if child:IsA("Frame") or child:IsA("TextButton") then
+                    local base = child:GetAttribute("BaseHeight")
+                    if not base then
+                        base = child.Size.Y.Offset
+                        child:SetAttribute("BaseHeight", base)
+                    end
+                    if base and base > 0 then
+                        child.Size = UDim2.new(child.Size.X.Scale, child.Size.X.Offset, 0, base + cfg.itemH)
+                    end
+                end
+            end
+        else
+            for _, child in ipairs(tab.Scroll:GetChildren()) do
+                if child:IsA("Frame") or child:IsA("TextButton") then
+                    local base = child:GetAttribute("BaseHeight")
+                    if base and base > 0 then
+                        child.Size = UDim2.new(child.Size.X.Scale, child.Size.X.Offset, 0, base)
+                    end
+                end
+            end
+        end
+    end
+    self:Notify("Layout", style .. " layout applied.", 2)
+end
+
+function WindUI:SetSidebarStyle(style)
+    self._sidebarStyle = style
+    for _, entry in ipairs(self._allBtns) do
+        local btn = entry.btn
+        local icon = entry.icon
+        local lbl = entry.lbl
+        if not (btn and btn.Parent) then continue end
+        if style == "Icon Only" then
+            btn.Size = UDim2.new(1, 0, 0, 32)
+            if lbl then lbl.Visible = false end
+            if icon then
+                icon.Position = UDim2.new(0.5, -6.5, 0.5, -6.5)
+                icon.Size = UDim2.new(0, 13, 0, 13)
+            end
+        elseif style == "Icon + Text" then
+            btn.Size = UDim2.new(1, 0, 0, 32)
+            if lbl then lbl.Visible = true end
+            if icon then
+                icon.Position = UDim2.new(0, 14, 0.5, -6.5)
+                icon.Size = UDim2.new(0, 13, 0, 13)
+            end
+        elseif style == "Text Only" then
+            btn.Size = UDim2.new(1, 0, 0, 32)
+            if lbl then
+                lbl.Visible = true
+                lbl.Position = UDim2.new(0, 12, 0, 0)
+                lbl.Size = UDim2.new(1, -16, 1, 0)
+            end
+            if icon then icon.Visible = false end
+        elseif style == "Large" then
+            btn.Size = UDim2.new(1, 0, 0, 44)
+            if lbl then
+                lbl.Visible = true
+                lbl.TextSize = 12
+            end
+            if icon then
+                icon.Size = UDim2.new(0, 16, 0, 16)
+                icon.Position = UDim2.new(0, 14, 0.5, -8)
+            end
+        end
+    end
+    self:Notify("Sidebar", style .. " style applied.", 2)
+end
 
 return WindUI
