@@ -591,6 +591,7 @@ function WindUI:CreateWindow(title)
     sideSep.Size = UDim2.new(0, 1, 1, -49)
     sideSep.Position = UDim2.new(0, 148, 0, 49)
     sideSep.BackgroundColor3 = self.CurrentTheme.Border
+    sideSep.BackgroundTransparency = 1
     sideSep.BorderSizePixel = 0
 
     local searchInput = topSearchInput
