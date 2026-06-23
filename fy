@@ -246,25 +246,27 @@ function WindUI:Notify(title, text, duration)
     end)
 end
 
--- Smooth Draggable Setup Helper
+-- Fixed Draggable Helper (Anti Analog Jumps on Mobile Multi-touch)
 local function MakeDraggable(dragPart, mainFrame)
-    local dragging, dragStart, startPos
+    local dragging, dragStart, startPos, dragInput
     dragPart.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
+            dragInput = input
             dragStart = input.Position
             startPos = mainFrame.Position
         end
     end)
     UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        if dragging and input == dragInput and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - dragStart
             mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end)
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if input == dragInput then
             dragging = false
+            dragInput = nil
         end
     end)
 end
@@ -429,7 +431,7 @@ function WindUI:CreateWindow(title)
         end
     end)
 
-    -- Floating Close/Open Hotkey Toggle UI Button
+    -- Floating Close/Open Hotkey Toggle UI Button (Safe from Analog Conflicts)
     local toggleBtn = Instance.new("TextButton", self.ScreenGui)
     toggleBtn.Size = UDim2.new(0, 38, 0, 38)
     toggleBtn.Position = UDim2.new(0.04, 0, 0.04, 0)
@@ -643,11 +645,112 @@ function WindUI:CreateWindow(title)
         end)
         btn.MouseButton1Click:Connect(Activate)
 
-        -- INTERACTIVE TAB WIDGETS
+        -- ── NEW FEATURE: CHANGE TAB/SUBTAB LAYOUT STYLE ──
+        function Tab:SetLayoutStyle(style)
+            if self.Scroll:FindFirstChildOfClass("UIListLayout") then self.Scroll:FindFirstChildOfClass("UIListLayout"):Destroy() end
+            if self.Scroll:FindFirstChildOfClass("UIGridLayout") then self.Scroll:FindFirstChildOfClass("UIGridLayout"):Destroy() end
+            
+            if style == "Grid" then
+                local grid = Instance.new("UIGridLayout", self.Scroll)
+                grid.CellSize = UDim2.new(0, 175, 0, 42)
+                grid.CellPadding = UDim2.new(0, 6, 0, 6)
+                grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
+            elseif style == "Horizontal" then
+                local list = Instance.new("UIListLayout", self.Scroll)
+                list.FillDirection = Enum.FillDirection.Horizontal
+                list.Padding = UDim.new(0, 6)
+                list.VerticalAlignment = Enum.VerticalAlignment.Center
+            else -- "Vertical" (Default List)
+                local list = Instance.new("UIListLayout", self.Scroll)
+                list.FillDirection = Enum.FillDirection.Vertical
+                list.Padding = UDim.new(0, 6)
+                list.HorizontalAlignment = Enum.HorizontalAlignment.Center
+            end
+        end
+
+        -- ── NEW FEATURE: SUBTAB GENERATOR SYSTEM ──
+        function Tab:CreateSubTab(subName)
+            if not self.SubTabBar then
+                self.Scroll.Visible = false
+                
+                local bar = Instance.new("Frame", self.Container)
+                bar.Name = "SubTabBar"
+                bar.Size = UDim2.new(1, 0, 0, 32)
+                bar.Position = UDim2.new(0, 0, 0, 0)
+                bar.BackgroundColor3 = WindUI.CurrentTheme.Secondary
+                Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 6)
+                Instance.new("UIStroke", bar).Color = WindUI.CurrentTheme.Border
+                
+                local subLayout = Instance.new("UIListLayout", bar)
+                subLayout.FillDirection = Enum.FillDirection.Horizontal
+                subLayout.Padding = UDim.new(0, 4)
+                subLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+                Instance.new("UIPadding", bar).PaddingLeft = UDim.new(0, 6)
+                
+                self.SubTabBar = bar
+                self.SubTabs = {}
+                self.CurrentSubTab = nil
+            end
+            
+            local sBtn = Instance.new("TextButton", self.SubTabBar)
+            sBtn.Size = UDim2.new(0, 85, 0, 22)
+            sBtn.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
+            sBtn.Text = subName
+            sBtn.Font = WindUI.CurrentFont
+            sBtn.TextColor3 = WindUI.CurrentTheme.SubText
+            sBtn.TextSize = 10
+            Instance.new("UICorner", sBtn).CornerRadius = UDim.new(0, 5)
+            Instance.new("UIStroke", sBtn).Color = WindUI.CurrentTheme.Border
+            
+            local subScroll = Instance.new("ScrollingFrame", self.Container)
+            subScroll.Size = UDim2.new(1, 0, 1, -38)
+            subScroll.Position = UDim2.new(0, 0, 0, 38)
+            subScroll.BackgroundTransparency = 1
+            subScroll.ScrollBarThickness = 2
+            subScroll.ScrollBarImageColor3 = WindUI.CurrentTheme.Accent
+            subScroll.Visible = false
+            
+            local subList = Instance.new("UIListLayout", subScroll)
+            subList.Padding = UDim.new(0, 6)
+            subList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+            Instance.new("UIPadding", subScroll).PaddingTop = UDim.new(0, 6)
+            
+            local SubTab = { Scroll = subScroll, Button = sBtn, Container = self.Container }
+            
+            -- Inherit all parent tab features
+            for k, v in pairs(self) do
+                if type(v) == "function" and k ~= "CreateSubTab" then
+                    SubTab[k] = v
+                end
+            end
+            
+            local function ActivateSub()
+                if self.CurrentSubTab == SubTab then return end
+                for _, st in pairs(self.SubTabs) do
+                    st.Scroll.Visible = false
+                    st.Button.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
+                    st.Button.TextColor3 = WindUI.CurrentTheme.SubText
+                    st.Button:FindFirstChildOfClass("UIStroke").Color = WindUI.CurrentTheme.Border
+                end
+                self.CurrentSubTab = SubTab
+                subScroll.Visible = true
+                sBtn.BackgroundColor3 = WindUI.CurrentTheme.Accent
+                sBtn.TextColor3 = WindUI.CurrentTheme.Text
+                sBtn:FindFirstChildOfClass("UIStroke").Color = WindUI.CurrentTheme.Accent
+            end
+            
+            sBtn.MouseButton1Click:Connect(ActivateSub)
+            table.insert(self.SubTabs, SubTab)
+            if #self.SubTabs == 1 then ActivateSub() end
+            
+            return SubTab
+        end
+
+        -- INTERACTIVE TAB WIDGETS (Updated to support flexible routing)
         
         -- 1. Button Widget
         function Tab:CreateButton(text, callback, iconName)
-            local b = Instance.new("TextButton", scroll)
+            local b = Instance.new("TextButton", self.Scroll)
             b.Size = UDim2.new(0.96, 0, 0, 34)
             b.BackgroundColor3 = WindUI.CurrentTheme.Secondary
             b.Text = ""
@@ -704,7 +807,7 @@ function WindUI:CreateWindow(title)
         -- 2. Toggle Widget
         function Tab:CreateToggle(text, default, callback)
             local state = default
-            local tBtn = Instance.new("TextButton", scroll)
+            local tBtn = Instance.new("TextButton", self.Scroll)
             tBtn.Size = UDim2.new(0.96, 0, 0, 36)
             tBtn.BackgroundColor3 = WindUI.CurrentTheme.Secondary
             tBtn.Text = ""
@@ -747,7 +850,7 @@ function WindUI:CreateWindow(title)
 
         -- 3. Slider Widget
         function Tab:CreateSlider(text, min, max, default, callback)
-            local sFrame = Instance.new("Frame", scroll)
+            local sFrame = Instance.new("Frame", self.Scroll)
             sFrame.Size = UDim2.new(0.96, 0, 0, 48)
             sFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
             Instance.new("UICorner", sFrame).CornerRadius = UDim.new(0, 6)
@@ -817,7 +920,7 @@ function WindUI:CreateWindow(title)
         -- 4. Standard Dropdown Widget
         function Tab:CreateDropdown(text, options, callback)
             local expanded = false
-            local dFrame = Instance.new("Frame", scroll)
+            local dFrame = Instance.new("Frame", self.Scroll)
             dFrame.Size = UDim2.new(0.96, 0, 0, 40)
             dFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
             dFrame.ClipsDescendants = true
@@ -892,7 +995,7 @@ function WindUI:CreateWindow(title)
         function Tab:CreateMultiDropdown(text, options, callback)
             local expanded = false
             local selected = {}
-            local dFrame = Instance.new("Frame", scroll)
+            local dFrame = Instance.new("Frame", self.Scroll)
             dFrame.Size = UDim2.new(0.96, 0, 0, 40)
             dFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
             dFrame.ClipsDescendants = true
@@ -963,7 +1066,7 @@ function WindUI:CreateWindow(title)
 
         -- 6. TextBox Input Widget
         function Tab:CreateInput(text, placeholder, callback)
-            local iFrame = Instance.new("Frame", scroll)
+            local iFrame = Instance.new("Frame", self.Scroll)
             iFrame.Size = UDim2.new(0.96, 0, 0, 48)
             iFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
             Instance.new("UICorner", iFrame).CornerRadius = UDim.new(0, 6)
@@ -1015,7 +1118,7 @@ function WindUI:CreateWindow(title)
             local currentKey = default or Enum.KeyCode.Unknown
             local binding = false
 
-            local kFrame = Instance.new("TextButton", scroll)
+            local kFrame = Instance.new("TextButton", self.Scroll)
             kFrame.Size = UDim2.new(0.96, 0, 0, 36)
             kFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
             kFrame.Text = ""
@@ -1070,7 +1173,7 @@ function WindUI:CreateWindow(title)
 
         -- 8. Confirm Security Button
         function Tab:CreateConfirmButton(text, confirmText, callback, iconName)
-            local b = Instance.new("TextButton", scroll)
+            local b = Instance.new("TextButton", self.Scroll)
             b.Size = UDim2.new(0.96, 0, 0, 34)
             b.BackgroundColor3 = WindUI.CurrentTheme.Secondary
             b.Text = ""
@@ -1116,7 +1219,7 @@ function WindUI:CreateWindow(title)
 
         -- 9. Section Label Title
         function Tab:CreateSection(text)
-            local f = Instance.new("Frame", scroll)
+            local f = Instance.new("Frame", self.Scroll)
             f.Size = UDim2.new(0.96, 0, 0, 22)
             f.BackgroundTransparency = 1
 
@@ -1130,15 +1233,6 @@ function WindUI:CreateWindow(title)
             l.TextXAlignment = Enum.TextXAlignment.Left
             l.BackgroundTransparency = 1
         end
-
-        -- Compatibility routing setup
-        Tab.CreateButton = Tab.CreateButton
-        Tab.CreateToggle = Tab.CreateToggle
-        Tab.CreateSlider = Tab.CreateSlider
-        Tab.CreateDropdown = Tab.CreateDropdown
-        Tab.CreateMultiDropdown = Tab.CreateMultiDropdown
-        Tab.CreateInput = Tab.CreateInput
-        Tab.CreateKeybind = Tab.CreateKeybind
 
         table.insert(Window.Tabs, Tab)
         if #Window.Tabs == 1 then Activate() end
