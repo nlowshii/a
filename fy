@@ -493,8 +493,8 @@ function WindUI:CreateWindow(title)
     dragLine.Name = "ExternalDrag"
     dragLine.Size = UDim2.new(0, 60, 0, 5)
     dragLine.Position = UDim2.new(0.5, -30, 1, 12)
-    dragLine.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    dragLine.BackgroundTransparency = 0.6
+    dragLine.BackgroundColor3 = WindUI.CurrentTheme.Border
+    dragLine.BackgroundTransparency = 0.2
     Instance.new("UICorner", dragLine).CornerRadius = UDim.new(1, 0)
     local dragHitbox = Instance.new("TextButton", dragLine)
     dragHitbox.Size = UDim2.new(3, 0, 8, 0)
@@ -574,7 +574,7 @@ function WindUI:CreateWindow(title)
             main.Size = UDim2.new(0,540,0,0)
             main.GroupTransparency = 1
             Tween(main, {Time=0.45, Style=Enum.EasingStyle.Back}, {Size=UDim2.new(1,0,1,0), GroupTransparency=0})
-            Tween(dragLine, {Time=0.3}, {BackgroundTransparency=0.6})
+            Tween(dragLine, {Time=0.3}, {BackgroundTransparency=0.2})
         end
     end)
 
