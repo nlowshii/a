@@ -9,7 +9,6 @@ local TeleportService = game:GetService("TeleportService")
 
 local LocalPlayer = Players.LocalPlayer
 
--- System Loading Lucide Icons
 local Icons = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/Icons/main/Main-v2.lua"))()
 Icons.SetIconsType("lucide")
 
@@ -29,7 +28,6 @@ local function ApplyIcon(img, iconData)
     end
 end
 
--- Main Library Config & Theme
 local WindUI = {
     CurrentTheme = {
         Accent      = Color3.fromRGB(210, 32, 32),
@@ -42,24 +40,24 @@ local WindUI = {
         Border      = Color3.fromRGB(30, 30, 37),
         BorderLight = Color3.fromRGB(46, 46, 58),
     },
-    CurrentFont = Enum.Font.GothamMedium,
-    ScreenGui   = nil,
-    NotifyGui   = nil,
-    Closed      = false,
-    Connections = {}
+    CurrentFont  = Enum.Font.GothamMedium,
+    ScreenGui    = nil,
+    NotifyGui    = nil,
+    Closed       = false,
+    Connections  = {},
+    GetIcon      = GetIcon,
+    ApplyIcon    = ApplyIcon,
 }
 
--- Global Animation Helper
 local function Tween(obj, info, goal)
     local t = TweenService:Create(obj,
         TweenInfo.new(info.Time or 0.3, info.Style or Enum.EasingStyle.Quart, info.Dir or Enum.EasingDirection.Out),
         goal)
-    t:Play()
-    return t
+    t:Play(); return t
 end
 
--- Dynamic Accent Theme Color Recalculator
 function WindUI:ApplyThemeAccent(newAccent, newAccentDark)
+    -- Simpan warna lama SEBELUM diubah, supaya matching bisa kerja
     local oldAccent = self.CurrentTheme.Accent
 
     self.CurrentTheme.AccentDark = newAccentDark or Color3.fromRGB(
@@ -75,6 +73,7 @@ function WindUI:ApplyThemeAccent(newAccent, newAccentDark)
     local border = self.CurrentTheme.Border
 
     local function isAccent(c)
+        -- Cek apakah warna ini accent lama (tolerance lebih longgar untuk handle variasi)
         return math.abs(c.R - oldAccent.R) < 0.05
            and math.abs(c.G - oldAccent.G) < 0.05
            and math.abs(c.B - oldAccent.B) < 0.05
@@ -87,18 +86,21 @@ function WindUI:ApplyThemeAccent(newAccent, newAccentDark)
     end
 
     local function isNeutral(c)
+        -- Hindari ubah warna putih murni (knob toggle) dan hitam murni
         return (c.R > 0.95 and c.G > 0.95 and c.B > 0.95)
             or (c.R < 0.05 and c.G < 0.05 and c.B < 0.05)
     end
 
     local function UpdateAccentColor(inst)
         for _, child in ipairs(inst:GetDescendants()) do
+            -- Skip swatch buttons dan semua isi-nya agar warna swatch tidak ikut berubah
             if child.Name == "SwatchBtn" then continue end
             local p = child.Parent
             if p and p.Name == "SwatchBtn" then continue end
+            -- Skip elemen yang ditandai NoAccent (floating button section, dll)
             if child.Name == "NoAccent" then continue end
             if p and p.Name == "NoAccent" then continue end
-            
+            -- Skip seluruh subtree dari ancestor NoAccent
             local skipAncestor = false
             local check = child.Parent
             while check and check ~= inst do
@@ -107,28 +109,38 @@ function WindUI:ApplyThemeAccent(newAccent, newAccentDark)
             end
             if skipAncestor then continue end
 
+            -- Frame / TextButton / CanvasGroup background
             if child:IsA("Frame") or child:IsA("TextButton") or child:IsA("CanvasGroup") then
-                if isAccent(child.BackgroundColor3) then
+                local bc = child.BackgroundColor3
+                if isAccent(bc) then
                     child.BackgroundColor3 = newAccent
                 end
             end
+            -- TextLabel / TextButton text color
             if child:IsA("TextLabel") or child:IsA("TextButton") then
-                if isAccent(child.TextColor3) then
+                local tc = child.TextColor3
+                if isAccent(tc) then
                     child.TextColor3 = newAccent
                 end
             end
+            -- ImageLabel color
             if child:IsA("ImageLabel") then
-                if isAccent(child.ImageColor3) then
+                local ic = child.ImageColor3
+                if isAccent(ic) then
                     child.ImageColor3 = newAccent
                 end
             end
+            -- UIStroke color (skip border-colored strokes dan neutral)
             if child:IsA("UIStroke") then
-                if isAccent(child.Color) and not isBorder(child.Color) and not isNeutral(child.Color) then
+                local sc = child.Color
+                if isAccent(sc) and not isBorder(sc) and not isNeutral(sc) then
                     child.Color = newAccent
                 end
             end
+            -- ScrollingFrame scrollbar
             if child:IsA("ScrollingFrame") then
-                if isAccent(child.ScrollBarImageColor3) then
+                local sc = child.ScrollBarImageColor3
+                if isAccent(sc) then
                     child.ScrollBarImageColor3 = newAccent
                 end
             end
@@ -136,69 +148,106 @@ function WindUI:ApplyThemeAccent(newAccent, newAccentDark)
     end
 
     UpdateAccentColor(self.ScreenGui)
+    -- Update accent SETELAH loop selesai
     self.CurrentTheme.Accent = newAccent
     if self.NotifyGui then
         UpdateAccentColor(self.NotifyGui)
+        self.CurrentTheme.Accent = newAccent
+    end
+    -- Update floatGui jika ada
+    if floatGui then
+        UpdateAccentColor(floatGui)
     end
 end
 
--- Prestige Compact Notifications System
 function WindUI:Notify(title, text, duration)
     if not self.NotifyGui then
         self.NotifyGui = Instance.new("ScreenGui", CoreGui)
         self.NotifyGui.Name = "WindUI_Notifications"
+        self.NotifyGui.DisplayOrder = 99
         local holder = Instance.new("Frame", self.NotifyGui)
         holder.Name = "Holder"
-        holder.Size = UDim2.new(0, 280, 1, 0)
-        holder.Position = UDim2.new(1, -292, 0, 0)
+        holder.Size = UDim2.new(0, 300, 1, 0)
+        holder.Position = UDim2.new(1, -312, 0, 0)
         holder.BackgroundTransparency = 1
         local layout = Instance.new("UIListLayout", holder)
         layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
-        layout.Padding = UDim.new(0, 6)
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Padding = UDim.new(0, 8)
         local pad = Instance.new("UIPadding", holder)
-        pad.PaddingBottom = UDim.new(0, 22)
+        pad.PaddingBottom = UDim.new(0, 28)
+        pad.PaddingRight = UDim.new(0, 0)
     end
 
-    local nFrame = Instance.new("Frame", self.NotifyGui.Holder)
-    nFrame.Size = UDim2.new(1, 0, 0, 60)
-    nFrame.BackgroundColor3 = self.CurrentTheme.Secondary
-    nFrame.BackgroundTransparency = 1
-    Instance.new("UICorner", nFrame).CornerRadius = UDim.new(0, 7)
+    local dur = duration or 4
 
+    -- ── Outer card (CanvasGroup for group fade) ──────────────────────────────
+    local nFrame = Instance.new("CanvasGroup", self.NotifyGui.Holder)
+    nFrame.Size = UDim2.new(1, 0, 0, 72)
+    nFrame.BackgroundColor3 = self.CurrentTheme.Secondary
+    nFrame.GroupTransparency = 0
+    nFrame.ClipsDescendants = false
+    Instance.new("UICorner", nFrame).CornerRadius = UDim.new(0, 10)
+
+    -- Glass border
     local nStroke = Instance.new("UIStroke", nFrame)
     nStroke.Color = self.CurrentTheme.Border
-    nStroke.Transparency = 1
     nStroke.Thickness = 1
+    nStroke.Transparency = 0
 
+    -- Subtle inner top highlight line
+    local topShine = Instance.new("Frame", nFrame)
+    topShine.Size = UDim2.new(0.6, 0, 0, 1)
+    topShine.Position = UDim2.new(0.2, 0, 0, 0)
+    topShine.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    topShine.BackgroundTransparency = 0.85
+    topShine.BorderSizePixel = 0
+    Instance.new("UICorner", topShine).CornerRadius = UDim.new(1, 0)
+
+    -- Accent left bar (thick, rounded, full height)
     local accentBar = Instance.new("Frame", nFrame)
-    accentBar.Size = UDim2.new(0, 2, 0, 30)
-    accentBar.Position = UDim2.new(0, 0, 0.5, -15)
+    accentBar.Size = UDim2.new(0, 3, 1, -16)
+    accentBar.Position = UDim2.new(0, 0, 0, 8)
     accentBar.BackgroundColor3 = self.CurrentTheme.Accent
-    accentBar.BackgroundTransparency = 1
     Instance.new("UICorner", accentBar).CornerRadius = UDim.new(1, 0)
 
-    local topGlow = Instance.new("Frame", nFrame)
-    topGlow.Size = UDim2.new(1, 0, 0, 1)
-    topGlow.Position = UDim2.new(0, 0, 0, 0)
-    topGlow.BackgroundColor3 = self.CurrentTheme.Accent
-    topGlow.BackgroundTransparency = 1
-    Instance.new("UICorner", topGlow).CornerRadius = UDim.new(0, 7)
+    -- Icon badge (circle, accent bg)
+    local iconBadge = Instance.new("Frame", nFrame)
+    iconBadge.Size = UDim2.new(0, 34, 0, 34)
+    iconBadge.Position = UDim2.new(0, 14, 0.5, -17)
+    iconBadge.BackgroundColor3 = self.CurrentTheme.Accent
+    iconBadge.BackgroundTransparency = 0.78
+    Instance.new("UICorner", iconBadge).CornerRadius = UDim.new(1, 0)
+    local iconStroke = Instance.new("UIStroke", iconBadge)
+    iconStroke.Color = self.CurrentTheme.Accent
+    iconStroke.Thickness = 1
+    iconStroke.Transparency = 0.5
 
+    local iconImg = Instance.new("ImageLabel", iconBadge)
+    iconImg.Size = UDim2.new(0, 15, 0, 15)
+    iconImg.Position = UDim2.new(0.5, -7.5, 0.5, -7.5)
+    iconImg.BackgroundTransparency = 1
+    iconImg.ImageColor3 = self.CurrentTheme.Accent
+    iconImg.ScaleType = Enum.ScaleType.Fit
+    task.spawn(function() ApplyIcon(iconImg, GetIcon("bell")) end)
+
+    -- Title label
     local tLbl = Instance.new("TextLabel", nFrame)
     tLbl.Text = title:upper()
-    tLbl.Size = UDim2.new(1, -38, 0, 16)
-    tLbl.Position = UDim2.new(0, 14, 0, 10)
+    tLbl.Size = UDim2.new(1, -110, 0, 14)
+    tLbl.Position = UDim2.new(0, 58, 0, 14)
     tLbl.Font = Enum.Font.GothamBold
     tLbl.TextColor3 = self.CurrentTheme.Accent
     tLbl.TextSize = 9
     tLbl.BackgroundTransparency = 1
     tLbl.TextXAlignment = Enum.TextXAlignment.Left
-    tLbl.TextTransparency = 1
+    tLbl.TextTruncate = Enum.TextTruncate.AtEnd
 
+    -- Body label
     local sLbl = Instance.new("TextLabel", nFrame)
     sLbl.Text = text
-    sLbl.Size = UDim2.new(1, -28, 0, 22)
-    sLbl.Position = UDim2.new(0, 14, 0, 28)
+    sLbl.Size = UDim2.new(1, -68, 0, 28)
+    sLbl.Position = UDim2.new(0, 58, 0, 30)
     sLbl.Font = Enum.Font.GothamMedium
     sLbl.TextColor3 = self.CurrentTheme.Text
     sLbl.TextSize = 10
@@ -206,72 +255,132 @@ function WindUI:Notify(title, text, duration)
     sLbl.TextXAlignment = Enum.TextXAlignment.Left
     sLbl.TextYAlignment = Enum.TextYAlignment.Top
     sLbl.TextWrapped = true
-    sLbl.TextTransparency = 1
 
+    -- Duration badge (top-right, small pill)
+    local durBadge = Instance.new("Frame", nFrame)
+    durBadge.Size = UDim2.new(0, 0, 0, 16)
+    durBadge.AutomaticSize = Enum.AutomaticSize.X
+    durBadge.Position = UDim2.new(1, -8, 0, 8)
+    durBadge.AnchorPoint = Vector2.new(1, 0)
+    durBadge.BackgroundColor3 = self.CurrentTheme.Tertiary
+    durBadge.BackgroundTransparency = 0.3
+    Instance.new("UICorner", durBadge).CornerRadius = UDim.new(1, 0)
+    local durPad = Instance.new("UIPadding", durBadge)
+    durPad.PaddingLeft = UDim.new(0, 6)
+    durPad.PaddingRight = UDim.new(0, 6)
+    local durLbl = Instance.new("TextLabel", durBadge)
+    durLbl.Size = UDim2.new(0, 0, 1, 0)
+    durLbl.AutomaticSize = Enum.AutomaticSize.X
+    durLbl.BackgroundTransparency = 1
+    durLbl.Text = dur .. "s"
+    durLbl.Font = Enum.Font.GothamBold
+    durLbl.TextColor3 = self.CurrentTheme.SubText
+    durLbl.TextSize = 8
+
+    -- Progress bar (bottom, accent colored)
     local progTrack = Instance.new("Frame", nFrame)
-    progTrack.Size = UDim2.new(1, 0, 0, 2)
-    progTrack.Position = UDim2.new(0, 0, 1, -2)
-    progTrack.BackgroundColor3 = self.CurrentTheme.Border
-    progTrack.BackgroundTransparency = 1
+    progTrack.Size = UDim2.new(1, -16, 0, 2)
+    progTrack.Position = UDim2.new(0, 8, 1, -6)
+    progTrack.BackgroundColor3 = self.CurrentTheme.Tertiary
+    progTrack.BackgroundTransparency = 0
     Instance.new("UICorner", progTrack).CornerRadius = UDim.new(1, 0)
 
     local progFill = Instance.new("Frame", progTrack)
     progFill.Size = UDim2.new(1, 0, 1, 0)
     progFill.BackgroundColor3 = self.CurrentTheme.Accent
-    progFill.BackgroundTransparency = 1
+    progFill.BackgroundTransparency = 0.2
     Instance.new("UICorner", progFill).CornerRadius = UDim.new(1, 0)
 
-    nFrame.Position = UDim2.new(0, 0, 0, 70)
-    Tween(nFrame,    {Time = 0.35, Style = Enum.EasingStyle.Quart}, {Position = UDim2.new(0,0,0,0), BackgroundTransparency = 0})
-    Tween(nStroke,   {Time = 0.35}, {Transparency = 0.3})
-    Tween(accentBar, {Time = 0.35}, {BackgroundTransparency = 0})
-    Tween(topGlow,   {Time = 0.35}, {BackgroundTransparency = 0.6})
-    Tween(tLbl,      {Time = 0.35}, {TextTransparency = 0})
-    Tween(sLbl,      {Time = 0.35}, {TextTransparency = 0})
-    Tween(progTrack, {Time = 0.35}, {BackgroundTransparency = 0.7})
-    Tween(progFill,  {Time = 0.35}, {BackgroundTransparency = 0})
+    -- Close button (×)
+    local closeBtn = Instance.new("TextButton", nFrame)
+    closeBtn.Size = UDim2.new(0, 18, 0, 18)
+    closeBtn.Position = UDim2.new(1, -26, 0, 28)
+    closeBtn.BackgroundColor3 = self.CurrentTheme.Tertiary
+    closeBtn.BackgroundTransparency = 0.5
+    closeBtn.Text = ""
+    closeBtn.ZIndex = 5
+    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(1, 0)
+    local closeIco = Instance.new("ImageLabel", closeBtn)
+    closeIco.Size = UDim2.new(0, 9, 0, 9)
+    closeIco.Position = UDim2.new(0.5, -4.5, 0.5, -4.5)
+    closeIco.BackgroundTransparency = 1
+    closeIco.ImageColor3 = self.CurrentTheme.SubText
+    closeIco.ScaleType = Enum.ScaleType.Fit
+    closeIco.ZIndex = 6
+    task.spawn(function() ApplyIcon(closeIco, GetIcon("x")) end)
 
-    task.delay(0.35, function()
-        Tween(progFill, {Time = (duration or 4) - 0.35, Style = Enum.EasingStyle.Linear}, {Size = UDim2.new(0,0,1,0)})
+    -- ── Animate IN — expand from 0 height ────────────────────────────────────
+    nFrame.Size = UDim2.new(1, 0, 0, 0)
+    nFrame.ClipsDescendants = true
+    Tween(nFrame, {Time = 0.3, Style = Enum.EasingStyle.Quart, Dir = Enum.EasingDirection.Out},
+        {Size = UDim2.new(1, 0, 0, 72)})
+
+    -- Progress shrink
+    task.delay(0.4, function()
+        Tween(progFill, {Time = dur - 0.4, Style = Enum.EasingStyle.Linear},
+            {Size = UDim2.new(0, 0, 1, 0)})
     end)
 
-    task.delay(duration or 4, function()
-        Tween(nFrame,    {Time = 0.3, Style = Enum.EasingStyle.Quart, Dir = Enum.EasingDirection.In}, {Position = UDim2.new(0,0,0,-70), BackgroundTransparency = 1})
-        Tween(nStroke,   {Time = 0.25}, {Transparency = 1})
-        Tween(tLbl,      {Time = 0.25}, {TextTransparency = 1})
-        Tween(sLbl,      {Time = 0.25}, {TextTransparency = 1})
-        Tween(accentBar, {Time = 0.25}, {BackgroundTransparency = 1})
-        task.wait(0.35)
-        nFrame:Destroy()
+    -- ── Auto dismiss ─────────────────────────────────────────────────────────
+    local dismissed = false
+
+    -- Countdown timer label (e.g. 4s → 3s → 2s → 1s → 0s)
+    task.spawn(function()
+        local remaining = dur
+        while remaining > 0 and not dismissed do
+            task.wait(1)
+            remaining = remaining - 1
+            if durLbl and durLbl.Parent then
+                durLbl.Text = remaining .. "s"
+            end
+        end
     end)
+
+    local function Dismiss()
+        if dismissed then return end
+        dismissed = true
+        nFrame.ClipsDescendants = true
+        Tween(nFrame, {Time = 0.25, Style = Enum.EasingStyle.Quart, Dir = Enum.EasingDirection.In},
+            {Size = UDim2.new(1, 0, 0, 0)})
+        task.wait(0.27)
+        if nFrame and nFrame.Parent then nFrame:Destroy() end
+    end
+
+    closeBtn.MouseEnter:Connect(function()
+        Tween(closeBtn, {Time=0.1}, {BackgroundTransparency=0})
+        Tween(closeIco, {Time=0.1}, {ImageColor3=self.CurrentTheme.Text})
+    end)
+    closeBtn.MouseLeave:Connect(function()
+        Tween(closeBtn, {Time=0.1}, {BackgroundTransparency=0.5})
+        Tween(closeIco, {Time=0.1}, {ImageColor3=self.CurrentTheme.SubText})
+    end)
+    closeBtn.MouseButton1Click:Connect(function() task.spawn(Dismiss) end)
+
+    task.delay(dur, function() task.spawn(Dismiss) end)
 end
 
--- Fixed Draggable Helper (Anti Analog Jumps on Mobile Multi-touch)
 local function MakeDraggable(dragPart, mainFrame)
-    local dragging, dragStart, startPos, dragInput
+    local dragging, dragStart, startPos
     dragPart.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragInput = input
-            dragStart = input.Position
-            startPos = mainFrame.Position
+            dragging = true; dragStart = input.Position; startPos = mainFrame.Position
         end
     end)
     UserInputService.InputChanged:Connect(function(input)
-        if dragging and input == dragInput and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - dragStart
             mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end)
     UserInputService.InputEnded:Connect(function(input)
-        if input == dragInput then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = false
-            dragInput = nil
         end
     end)
 end
 
--- Creation of MainWindow
+WindUI.MakeDraggable = MakeDraggable
+
 function WindUI:CreateWindow(title)
     if not self.ScreenGui then
         self.ScreenGui = Instance.new("ScreenGui", CoreGui)
@@ -287,6 +396,7 @@ function WindUI:CreateWindow(title)
 
     local main = Instance.new("CanvasGroup", container)
     main.Name = "MainFrame"
+    main.ClipsDescendants = false
     main.Size = UDim2.new(1, 0, 1, 0)
     main.BackgroundColor3 = self.CurrentTheme.Background
     main.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -301,13 +411,17 @@ function WindUI:CreateWindow(title)
     topBar.Name = "TopBar"
     topBar.Size = UDim2.new(1, 0, 0, 48)
     topBar.BackgroundColor3 = self.CurrentTheme.Secondary
+    topBar.BackgroundTransparency = 0
+    topBar.BorderSizePixel = 0
     Instance.new("UICorner", topBar).CornerRadius = UDim.new(0, 7)
 
     local topSep = Instance.new("Frame", main)
     topSep.Size = UDim2.new(1, 0, 0, 1)
     topSep.Position = UDim2.new(0, 0, 0, 48)
     topSep.BackgroundColor3 = self.CurrentTheme.Border
+    topSep.BorderSizePixel = 0
 
+    -- PRESTIGE.CC style left bar + stacked title/subtitle
     local accentBar = Instance.new("Frame", topBar)
     accentBar.Size = UDim2.new(0, 2, 0, 26)
     accentBar.Position = UDim2.new(0, 14, 0.5, -13)
@@ -325,7 +439,7 @@ function WindUI:CreateWindow(title)
     titleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     local subLbl = Instance.new("TextLabel", topBar)
-    subLbl.Text = "Freemium  |  Version 4.0"
+    subLbl.Text = "Freemium  |  Version 2.0"
     subLbl.Font = Enum.Font.Gotham
     subLbl.TextSize = 9
     subLbl.TextColor3 = self.CurrentTheme.SubText
@@ -334,11 +448,12 @@ function WindUI:CreateWindow(title)
     subLbl.BackgroundTransparency = 1
     subLbl.TextXAlignment = Enum.TextXAlignment.Left
 
-    -- Prestige Style Top Bar Search Engine
+    -- Search box in topbar (PRESTIGE.CC style)
     local topSearchBox = Instance.new("Frame", topBar)
-    topSearchBox.Size = UDim2.new(0, 140, 0, 26)
-    topSearchBox.Position = UDim2.new(1, -220, 0.5, -13)
+    topSearchBox.Size = UDim2.new(0, 120, 0, 26)
+    topSearchBox.Position = UDim2.new(1, -200, 0.5, -13)
     topSearchBox.BackgroundColor3 = self.CurrentTheme.Tertiary
+    topSearchBox.BorderSizePixel = 0
     Instance.new("UICorner", topSearchBox).CornerRadius = UDim.new(0, 6)
     local topSearchStroke = Instance.new("UIStroke", topSearchBox)
     topSearchStroke.Color = self.CurrentTheme.Border
@@ -358,19 +473,20 @@ function WindUI:CreateWindow(title)
     topSearchInput.BackgroundTransparency = 1
     topSearchInput.Font = Enum.Font.Gotham
     topSearchInput.Text = ""
-    topSearchInput.PlaceholderText = "Search features..."
+    topSearchInput.PlaceholderText = "Search..."
     topSearchInput.TextColor3 = self.CurrentTheme.Text
     topSearchInput.PlaceholderColor3 = self.CurrentTheme.SubText
     topSearchInput.TextSize = 10
     topSearchInput.TextXAlignment = Enum.TextXAlignment.Left
     topSearchInput.ClearTextOnFocus = false
 
-    -- Performance Badge (FPS Counter)
+    -- FPS badge (compact, right-aligned)
     local fpsBadge = Instance.new("Frame", topBar)
     fpsBadge.Name = "FPSBadge"
     fpsBadge.Size = UDim2.new(0, 54, 0, 20)
     fpsBadge.Position = UDim2.new(1, -68, 0.5, -10)
     fpsBadge.BackgroundColor3 = self.CurrentTheme.Tertiary
+    fpsBadge.BorderSizePixel = 0
     Instance.new("UICorner", fpsBadge).CornerRadius = UDim.new(0, 6)
     local fpsBadgeStroke = Instance.new("UIStroke", fpsBadge)
     fpsBadgeStroke.Color = self.CurrentTheme.Border
@@ -383,33 +499,57 @@ function WindUI:CreateWindow(title)
     fpsLabel.TextColor3 = self.CurrentTheme.SubText
     fpsLabel.BackgroundTransparency = 1
 
-    local fpsTimer, fpsCount = 0, 0
-    local fpsConn = RunService.RenderStepped:Connect(function(dt)
+    local fpsTimer = 0
+    local fpsCount = 0
+    local fpsConn
+    fpsConn = RunService.RenderStepped:Connect(function(dt)
         fpsCount = fpsCount + 1
         fpsTimer = fpsTimer + dt
         if fpsTimer >= 0.5 then
-            fpsLabel.Text = "FPS: " .. math.round(fpsCount / fpsTimer)
-            fpsTimer, fpsCount = 0, 0
+            local fps = math.round(fpsCount / fpsTimer)
+            fpsLabel.Text = "FPS: " .. fps
+            fpsTimer = 0; fpsCount = 0
         end
     end)
     table.insert(self.Connections, fpsConn)
 
     MakeDraggable(topBar, container)
 
-    -- Dynamic Interactive Resize Engine
-    local MIN_W, MIN_H = 420, 300
+    local dragLine = Instance.new("Frame", container)
+    dragLine.Name = "ExternalDrag"
+    dragLine.Size = UDim2.new(0, 60, 0, 5)
+    dragLine.Position = UDim2.new(0.5, -30, 1, 12)
+    dragLine.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    dragLine.BackgroundTransparency = 0.6
+    Instance.new("UICorner", dragLine).CornerRadius = UDim.new(1, 0)
+    local dragHitbox = Instance.new("TextButton", dragLine)
+    dragHitbox.Size = UDim2.new(3, 0, 8, 0)
+    dragHitbox.Position = UDim2.new(-1, 0, -3.5, 0)
+    dragHitbox.BackgroundTransparency = 1
+    dragHitbox.Text = ""
+    MakeDraggable(dragHitbox, container)
+
+    local MIN_W, MIN_H = 400, 280
     local MAX_W, MAX_H = 800, 600
+
     local resizeHandle = Instance.new("Frame", main)
-    resizeHandle.Size = UDim2.new(0, 15, 0, 15)
-    resizeHandle.Position = UDim2.new(1, -15, 1, -15)
+    resizeHandle.Name = "ResizeHandle"
+    resizeHandle.Size = UDim2.new(0, 40, 0, 40)
+    resizeHandle.Position = UDim2.new(1, -40, 1, -40)
     resizeHandle.BackgroundTransparency = 1
-    
+    resizeHandle.ZIndex = 10
+
     local resizeBtn = Instance.new("TextButton", resizeHandle)
-    resizeBtn.Size = UDim2.new(1,0,1,0)
+    resizeBtn.Size = UDim2.new(1, 0, 1, 0)
+    resizeBtn.Position = UDim2.new(0, 0, 0, 0)
     resizeBtn.BackgroundTransparency = 1
     resizeBtn.Text = ""
+    resizeBtn.ZIndex = 10
 
-    local resizing, resizeStart, startSize = false, nil, nil
+    local resizing = false
+    local resizeStart = nil
+    local startSize = nil
+
     resizeBtn.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             resizing = true
@@ -417,21 +557,23 @@ function WindUI:CreateWindow(title)
             startSize = Vector2.new(container.AbsoluteSize.X, container.AbsoluteSize.Y)
         end
     end)
+
     UserInputService.InputChanged:Connect(function(input)
         if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - resizeStart
             local newW = math.clamp(startSize.X + delta.X, MIN_W, MAX_W)
             local newH = math.clamp(startSize.Y + delta.Y, MIN_H, MAX_H)
             container.Size = UDim2.new(0, newW, 0, newH)
+            container.Position = UDim2.new(0.5, -newW / 2, 0.5, -newH / 2)
         end
     end)
+
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             resizing = false
         end
     end)
 
-    -- Floating Close/Open Hotkey Toggle UI Button (Safe from Analog Conflicts)
     local toggleBtn = Instance.new("TextButton", self.ScreenGui)
     toggleBtn.Size = UDim2.new(0, 38, 0, 38)
     toggleBtn.Position = UDim2.new(0.04, 0, 0.04, 0)
@@ -450,42 +592,55 @@ function WindUI:CreateWindow(title)
     toggleBtn.MouseButton1Click:Connect(function()
         WindUI.Closed = not WindUI.Closed
         if WindUI.Closed then
-            Tween(main, {Time=0.3, Style=Enum.EasingStyle.Quart, Dir=Enum.EasingDirection.In}, {GroupTransparency=1, Size=UDim2.new(1,0,0,0)})
+            Tween(main, {Time=0.3, Style=Enum.EasingStyle.Quart, Dir=Enum.EasingDirection.In}, {GroupTransparency=1, Size=UDim2.new(0,540,0,0)})
+            Tween(dragLine, {Time=0.2}, {BackgroundTransparency=1})
             task.delay(0.32, function() container.Visible = false end)
         else
             container.Visible = true
-            main.Size = UDim2.new(1,0,0,0)
+            main.Size = UDim2.new(0,540,0,0)
+            main.GroupTransparency = 1
             Tween(main, {Time=0.45, Style=Enum.EasingStyle.Back}, {Size=UDim2.new(1,0,1,0), GroupTransparency=0})
+            Tween(dragLine, {Time=0.3}, {BackgroundTransparency=0.6})
         end
     end)
 
-    -- Sidebar Area Structure
     local sideBar = Instance.new("Frame", main)
     sideBar.Size = UDim2.new(0, 148, 1, -49)
     sideBar.Position = UDim2.new(0, 0, 0, 49)
     sideBar.BackgroundColor3 = self.CurrentTheme.Secondary
+    sideBar.BackgroundTransparency = 0
+    sideBar.BorderSizePixel = 0
+    sideBar.ClipsDescendants = true
+    Instance.new("UICorner", sideBar).CornerRadius = UDim.new(0, 7)
 
     local sideSep = Instance.new("Frame", main)
     sideSep.Size = UDim2.new(0, 1, 1, -49)
     sideSep.Position = UDim2.new(0, 148, 0, 49)
     sideSep.BackgroundColor3 = self.CurrentTheme.Border
+    sideSep.BorderSizePixel = 0
+
+    -- No search box in sidebar — search is in topbar
+    -- Wire topbar search to tab content filtering
+    local searchInput = topSearchInput
 
     local tabContainer = Instance.new("ScrollingFrame", sideBar)
     tabContainer.Size = UDim2.new(1, -8, 1, -68)
     tabContainer.Position = UDim2.new(0, 4, 0, 8)
     tabContainer.BackgroundTransparency = 1
     tabContainer.ScrollBarThickness = 0
+    tabContainer.ClipsDescendants = true
     local tabLayout = Instance.new("UIListLayout", tabContainer)
     tabLayout.Padding = UDim.new(0, 2)
 
-    -- Player Account Profile Frame Card
     local profileFrame = Instance.new("Frame", sideBar)
     profileFrame.Size = UDim2.new(1, -10, 0, 48)
     profileFrame.Position = UDim2.new(0, 5, 1, -54)
     profileFrame.BackgroundColor3 = self.CurrentTheme.Tertiary
+    profileFrame.BackgroundTransparency = 0
     Instance.new("UICorner", profileFrame).CornerRadius = UDim.new(0, 8)
     local profStroke = Instance.new("UIStroke", profileFrame)
     profStroke.Color = self.CurrentTheme.Border
+    profStroke.Thickness = 1
 
     local avatarImg = Instance.new("ImageLabel", profileFrame)
     avatarImg.Size = UDim2.new(0, 32, 0, 32)
@@ -503,20 +658,24 @@ function WindUI:CreateWindow(title)
     playerName.Text = LocalPlayer.DisplayName
     playerName.TextColor3 = self.CurrentTheme.Text
     playerName.Font = Enum.Font.GothamBold
-    playerName.TextSize = 10
+    playerName.TextSize = 11
     playerName.TextXAlignment = Enum.TextXAlignment.Left
 
     local verBadge = Instance.new("Frame", profileFrame)
     verBadge.Size = UDim2.new(0, 34, 0, 17)
-    verBadge.Position = UDim2.new(0, 48, 0, 26)
+    verBadge.Position = UDim2.new(0, 48, 0, 28)
     verBadge.BackgroundColor3 = self.CurrentTheme.Accent
     verBadge.BackgroundTransparency = 0.82
     Instance.new("UICorner", verBadge).CornerRadius = UDim.new(1, 0)
+    local verStroke = Instance.new("UIStroke", verBadge)
+    verStroke.Color = self.CurrentTheme.Accent
+    verStroke.Thickness = 1
+    verStroke.Transparency = 0.5
     local verLbl = Instance.new("TextLabel", verBadge)
     verLbl.Size = UDim2.new(1, 0, 1, 0)
-    verLbl.Text = "PRO"
+    verLbl.Text = "v2.0"
     verLbl.Font = Enum.Font.GothamBold
-    verLbl.TextSize = 8
+    verLbl.TextSize = 9
     verLbl.TextColor3 = self.CurrentTheme.Accent
     verLbl.BackgroundTransparency = 1
 
@@ -527,31 +686,44 @@ function WindUI:CreateWindow(title)
 
     local Window = { Tabs = {}, CurrentTab = nil }
 
-    -- Setup Event for TopBar Feature Search Filtering
-    topSearchInput:GetPropertyChangedSignal("Text"):Connect(function()
+    searchInput:GetPropertyChangedSignal("Text"):Connect(function()
         if Window.CurrentTab then
-            local txt = topSearchInput.Text:lower()
+            local txt = searchInput.Text:lower()
             for _, item in pairs(Window.CurrentTab.Scroll:GetChildren()) do
                 if item:IsA("Frame") or item:IsA("TextButton") then
                     local itemText = ""
                     local lbl = item:FindFirstChildOfClass("TextLabel")
                     if lbl then itemText = lbl.Text:lower()
                     elseif item:IsA("TextButton") then itemText = item.Text:lower() end
-                    if itemText ~= "" then 
-                        item.Visible = (itemText:find(txt) ~= nil)
-                    end
+                    if itemText ~= "" then item.Visible = itemText:find(txt) ~= nil end
                 end
             end
         end
     end)
 
     local TAB_ICONS = {
-        ["Home"] = "house", ["Main"] = "settings", ["Script"] = "code",
-        ["Player"] = "user", ["Visual"] = "eye", ["Misc"] = "layers",
-        ["Combat"] = "sword", ["World"] = "globe", ["Speed"] = "zap"
+        ["Home"]     = "house",
+        ["Main"]     = "settings",
+        ["Script"]   = "code",
+        ["Player"]   = "user",
+        ["Visual"]   = "eye",
+        ["Misc"]     = "layers",
+        ["Combat"]   = "sword",
+        ["World"]    = "globe",
+        ["Speed"]    = "zap",
+        ["Fly"]      = "wind",
+        ["ESP"]      = "scan-eye",
+        ["Aimbot"]   = "crosshair",
+        ["Movement"] = "move",
+        ["Items"]    = "package",
+        ["Farm"]     = "leaf",
+        ["Auto"]     = "bot",
+        ["Teleport"] = "map-pin",
+        ["Chat"]     = "message-circle",
+        ["Kill"]     = "skull",
+        ["Safe"]     = "shield",
     }
 
-    -- CreateTab Initialization
     function Window:CreateTab(name, iconName)
         local resolvedIcon = iconName or TAB_ICONS[name] or "circle-dot"
 
@@ -562,11 +734,13 @@ function WindUI:CreateWindow(title)
         btn.Text = ""
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
 
+        -- Left accent line (PRESTIGE.CC signature indicator)
         local indicator = Instance.new("Frame", btn)
         indicator.Size = UDim2.new(0, 2, 0, 0)
         indicator.Position = UDim2.new(0, 0, 0.5, 0)
         indicator.AnchorPoint = Vector2.new(0, 0.5)
         indicator.BackgroundColor3 = WindUI.CurrentTheme.Accent
+        indicator.BorderSizePixel = 0
         Instance.new("UICorner", indicator).CornerRadius = UDim.new(1, 0)
 
         local tabIcon = Instance.new("ImageLabel", btn)
@@ -597,19 +771,34 @@ function WindUI:CreateWindow(title)
         scroll.BackgroundTransparency = 1
         scroll.ScrollBarThickness = 2
         scroll.ScrollBarImageColor3 = WindUI.CurrentTheme.Accent
+        scroll.ScrollBarImageTransparency = 0.6
 
         local scrollLayout = Instance.new("UIListLayout", scroll)
         scrollLayout.Padding = UDim.new(0, 6)
         scrollLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 
         local scrollPad = Instance.new("UIPadding", scroll)
-        scrollPad.PaddingTop = UDim.new(0, 6)
-        scrollPad.PaddingBottom = UDim.new(0, 6)
+        scrollPad.PaddingTop = UDim.new(0, 8)
+        scrollPad.PaddingBottom = UDim.new(0, 8)
 
         local Tab = { Container = container_tab, Scroll = scroll, Button = btn }
 
         local function Activate()
             if Window.CurrentTab == Tab then return end
+            -- Slide out current tab
+            local prev = Window.CurrentTab
+            if prev and prev.Container then
+                local prevC = prev.Container
+                Tween(prevC, {Time=0.18, Style=Enum.EasingStyle.Quart, Dir=Enum.EasingDirection.In},
+                    {Position=UDim2.new(0,0,0,-10), GroupTransparency=1})
+                task.delay(0.19, function()
+                    if prevC and prevC.Parent then
+                        prevC.Visible = false
+                        prevC.Position = UDim2.new(0,0,0,0)
+                        prevC.GroupTransparency = 1
+                    end
+                end)
+            end
             for _, t in pairs(Window.Tabs) do
                 Tween(t.Button, {Time = 0.15}, {BackgroundTransparency = 1})
                 local ind = t.Button:FindFirstChild("Frame")
@@ -621,14 +810,15 @@ function WindUI:CreateWindow(title)
                 t.Container.Visible = false
             end
             Window.CurrentTab = Tab
-            container_tab.Visible = true
-            container_tab.Position = UDim2.new(0, 0, 0, 8)
+            container_tab.Position = UDim2.new(0, 0, 0, 14)
             container_tab.GroupTransparency = 1
-            Tween(container_tab, {Time = 0.3}, {Position = UDim2.new(0,0,0,0), GroupTransparency = 0})
+            container_tab.Visible = true
+            Tween(container_tab, {Time=0.28, Style=Enum.EasingStyle.Quart, Dir=Enum.EasingDirection.Out},
+                {Position=UDim2.new(0,0,0,0), GroupTransparency=0})
             Tween(btn, {Time = 0.15}, {BackgroundTransparency = 0.9})
             Tween(tabLbl, {Time = 0.15}, {TextColor3 = WindUI.CurrentTheme.Text})
             Tween(tabIcon, {Time = 0.15}, {ImageColor3 = WindUI.CurrentTheme.Accent})
-            Tween(indicator, {Time = 0.3, Style = Enum.EasingStyle.Back}, {Size = UDim2.new(0, 2, 0, 18)})
+            Tween(indicator, {Time = 0.35, Style = Enum.EasingStyle.Back}, {Size = UDim2.new(0, 2, 0, 18)})
         end
 
         btn.MouseEnter:Connect(function()
@@ -645,190 +835,96 @@ function WindUI:CreateWindow(title)
         end)
         btn.MouseButton1Click:Connect(Activate)
 
-        -- ── NEW FEATURE: CHANGE TAB/SUBTAB LAYOUT STYLE ──
-        function Tab:SetLayoutStyle(style)
-            if self.Scroll:FindFirstChildOfClass("UIListLayout") then self.Scroll:FindFirstChildOfClass("UIListLayout"):Destroy() end
-            if self.Scroll:FindFirstChildOfClass("UIGridLayout") then self.Scroll:FindFirstChildOfClass("UIGridLayout"):Destroy() end
-            
-            if style == "Grid" then
-                local grid = Instance.new("UIGridLayout", self.Scroll)
-                grid.CellSize = UDim2.new(0, 175, 0, 42)
-                grid.CellPadding = UDim2.new(0, 6, 0, 6)
-                grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
-            elseif style == "Horizontal" then
-                local list = Instance.new("UIListLayout", self.Scroll)
-                list.FillDirection = Enum.FillDirection.Horizontal
-                list.Padding = UDim.new(0, 6)
-                list.VerticalAlignment = Enum.VerticalAlignment.Center
-            else -- "Vertical" (Default List)
-                local list = Instance.new("UIListLayout", self.Scroll)
-                list.FillDirection = Enum.FillDirection.Vertical
-                list.Padding = UDim.new(0, 6)
-                list.HorizontalAlignment = Enum.HorizontalAlignment.Center
-            end
-        end
+        function Tab:CreateSection(text) end
 
-        -- ── NEW FEATURE: SUBTAB GENERATOR SYSTEM ──
-        function Tab:CreateSubTab(subName)
-            if not self.SubTabBar then
-                self.Scroll.Visible = false
-                
-                local bar = Instance.new("Frame", self.Container)
-                bar.Name = "SubTabBar"
-                bar.Size = UDim2.new(1, 0, 0, 32)
-                bar.Position = UDim2.new(0, 0, 0, 0)
-                bar.BackgroundColor3 = WindUI.CurrentTheme.Secondary
-                Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 6)
-                Instance.new("UIStroke", bar).Color = WindUI.CurrentTheme.Border
-                
-                local subLayout = Instance.new("UIListLayout", bar)
-                subLayout.FillDirection = Enum.FillDirection.Horizontal
-                subLayout.Padding = UDim.new(0, 4)
-                subLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-                Instance.new("UIPadding", bar).PaddingLeft = UDim.new(0, 6)
-                
-                self.SubTabBar = bar
-                self.SubTabs = {}
-                self.CurrentSubTab = nil
-            end
-            
-            local sBtn = Instance.new("TextButton", self.SubTabBar)
-            sBtn.Size = UDim2.new(0, 85, 0, 22)
-            sBtn.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
-            sBtn.Text = subName
-            sBtn.Font = WindUI.CurrentFont
-            sBtn.TextColor3 = WindUI.CurrentTheme.SubText
-            sBtn.TextSize = 10
-            Instance.new("UICorner", sBtn).CornerRadius = UDim.new(0, 5)
-            Instance.new("UIStroke", sBtn).Color = WindUI.CurrentTheme.Border
-            
-            local subScroll = Instance.new("ScrollingFrame", self.Container)
-            subScroll.Size = UDim2.new(1, 0, 1, -38)
-            subScroll.Position = UDim2.new(0, 0, 0, 38)
-            subScroll.BackgroundTransparency = 1
-            subScroll.ScrollBarThickness = 2
-            subScroll.ScrollBarImageColor3 = WindUI.CurrentTheme.Accent
-            subScroll.Visible = false
-            
-            local subList = Instance.new("UIListLayout", subScroll)
-            subList.Padding = UDim.new(0, 6)
-            subList.HorizontalAlignment = Enum.HorizontalAlignment.Center
-            Instance.new("UIPadding", subScroll).PaddingTop = UDim.new(0, 6)
-            
-            local SubTab = { Scroll = subScroll, Button = sBtn, Container = self.Container }
-            
-            -- Inherit all parent tab features
-            for k, v in pairs(self) do
-                if type(v) == "function" and k ~= "CreateSubTab" then
-                    SubTab[k] = v
-                end
-            end
-            
-            local function ActivateSub()
-                if self.CurrentSubTab == SubTab then return end
-                for _, st in pairs(self.SubTabs) do
-                    st.Scroll.Visible = false
-                    st.Button.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
-                    st.Button.TextColor3 = WindUI.CurrentTheme.SubText
-                    st.Button:FindFirstChildOfClass("UIStroke").Color = WindUI.CurrentTheme.Border
-                end
-                self.CurrentSubTab = SubTab
-                subScroll.Visible = true
-                sBtn.BackgroundColor3 = WindUI.CurrentTheme.Accent
-                sBtn.TextColor3 = WindUI.CurrentTheme.Text
-                sBtn:FindFirstChildOfClass("UIStroke").Color = WindUI.CurrentTheme.Accent
-            end
-            
-            sBtn.MouseButton1Click:Connect(ActivateSub)
-            table.insert(self.SubTabs, SubTab)
-            if #self.SubTabs == 1 then ActivateSub() end
-            
-            return SubTab
-        end
-
-        -- INTERACTIVE TAB WIDGETS (Updated to support flexible routing)
-        
-        -- 1. Button Widget
         function Tab:CreateButton(text, callback, iconName)
-            local b = Instance.new("TextButton", self.Scroll)
+            local b = Instance.new("TextButton", scroll)
             b.Size = UDim2.new(0.96, 0, 0, 34)
             b.BackgroundColor3 = WindUI.CurrentTheme.Secondary
             b.Text = ""
             Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
             local bStroke = Instance.new("UIStroke", b)
             bStroke.Color = WindUI.CurrentTheme.Border
+            bStroke.Thickness = 1
 
-            local textOffset = 14
+            local iconImg = Instance.new("ImageLabel", b)
+            iconImg.Size = UDim2.new(0, 13, 0, 13)
+            iconImg.Position = UDim2.new(0, 12, 0.5, -6.5)
+            iconImg.BackgroundTransparency = 1
+            iconImg.ImageColor3 = WindUI.CurrentTheme.Accent
+            iconImg.ScaleType = Enum.ScaleType.Fit
+            iconImg.Visible = false
+
+            local textOffset = 12
             if iconName then
-                local iconImg = Instance.new("ImageLabel", b)
-                iconImg.Size = UDim2.new(0, 13, 0, 13)
-                iconImg.Position = UDim2.new(0, 12, 0.5, -6.5)
-                iconImg.BackgroundTransparency = 1
-                iconImg.ImageColor3 = WindUI.CurrentTheme.Accent
-                task.spawn(function() ApplyIcon(iconImg, GetIcon(iconName)) end)
-                textOffset = 32
+                task.spawn(function()
+                    local iconData = GetIcon(iconName)
+                    if iconData then ApplyIcon(iconImg, iconData); iconImg.Visible = true end
+                end)
+                textOffset = 30
             end
 
             local bLbl = Instance.new("TextLabel", b)
             bLbl.Text = text
-            bLbl.Size = UDim2.new(1, -50, 1, 0)
+            bLbl.Size = UDim2.new(1, -(textOffset + 28), 1, 0)
             bLbl.Position = UDim2.new(0, textOffset, 0, 0)
+            bLbl.BackgroundTransparency = 1
             bLbl.Font = WindUI.CurrentFont
             bLbl.TextColor3 = WindUI.CurrentTheme.Text
             bLbl.TextSize = 11
             bLbl.TextXAlignment = Enum.TextXAlignment.Left
-            bLbl.BackgroundTransparency = 1
 
             local arrImg = Instance.new("ImageLabel", b)
             arrImg.Size = UDim2.new(0, 11, 0, 11)
             arrImg.Position = UDim2.new(1, -22, 0.5, -5.5)
             arrImg.BackgroundTransparency = 1
             arrImg.ImageColor3 = WindUI.CurrentTheme.Accent
-            arrImg.ImageTransparency = 0.5
+            arrImg.ImageTransparency = 0.6
+            arrImg.ScaleType = Enum.ScaleType.Fit
             task.spawn(function() ApplyIcon(arrImg, GetIcon("chevron-right")) end)
 
             b.MouseEnter:Connect(function()
-                Tween(b, {Time=0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Tertiary})
-                Tween(bStroke, {Time=0.12}, {Color = WindUI.CurrentTheme.Accent})
-                Tween(arrImg, {Time=0.12}, {ImageTransparency = 0})
+                Tween(b, {Time = 0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Tertiary})
+                Tween(bStroke, {Time = 0.12}, {Color = WindUI.CurrentTheme.Accent, Transparency = 0.5})
+                Tween(arrImg, {Time = 0.12}, {ImageTransparency = 0})
             end)
             b.MouseLeave:Connect(function()
-                Tween(b, {Time=0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Secondary})
-                Tween(bStroke, {Time=0.12}, {Color = WindUI.CurrentTheme.Border})
-                Tween(arrImg, {Time=0.12}, {ImageTransparency = 0.5})
+                Tween(b, {Time = 0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Secondary})
+                Tween(bStroke, {Time = 0.12}, {Color = WindUI.CurrentTheme.Border, Transparency = 0})
+                Tween(arrImg, {Time = 0.12}, {ImageTransparency = 0.6})
             end)
             b.MouseButton1Click:Connect(function()
-                Tween(b, {Time=0.06}, {BackgroundColor3 = WindUI.CurrentTheme.AccentDark})
-                task.delay(0.08, function() b.BackgroundColor3 = WindUI.CurrentTheme.Tertiary end)
+                Tween(b, {Time = 0.07}, {BackgroundColor3 = WindUI.CurrentTheme.AccentDark})
+                task.delay(0.1, function() Tween(b, {Time = 0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Secondary}) end)
                 pcall(callback)
             end)
         end
 
-        -- 2. Toggle Widget
         function Tab:CreateToggle(text, default, callback)
             local state = default
-            local tBtn = Instance.new("TextButton", self.Scroll)
+            local tBtn = Instance.new("TextButton", scroll)
             tBtn.Size = UDim2.new(0.96, 0, 0, 36)
             tBtn.BackgroundColor3 = WindUI.CurrentTheme.Secondary
             tBtn.Text = ""
             Instance.new("UICorner", tBtn).CornerRadius = UDim.new(0, 6)
             local tStroke = Instance.new("UIStroke", tBtn)
             tStroke.Color = WindUI.CurrentTheme.Border
+            tStroke.Thickness = 1
 
             local lbl = Instance.new("TextLabel", tBtn)
             lbl.Text = text
             lbl.Size = UDim2.new(1, -64, 1, 0)
-            lbl.Position = UDim2.new(0, 14, 0, 0)
+            lbl.Position = UDim2.new(0, 12, 0, 0)
+            lbl.BackgroundTransparency = 1
             lbl.Font = WindUI.CurrentFont
             lbl.TextColor3 = WindUI.CurrentTheme.Text
             lbl.TextSize = 11
             lbl.TextXAlignment = Enum.TextXAlignment.Left
-            lbl.BackgroundTransparency = 1
 
             local switch = Instance.new("Frame", tBtn)
-            switch.Size = UDim2.new(0, 32, 0, 16)
-            switch.Position = UDim2.new(1, -46, 0.5, -8)
-            switch.BackgroundColor3 = state and WindUI.CurrentTheme.Accent or Color3.fromRGB(35, 35, 40)
+            switch.Size = UDim2.new(0, 34, 0, 17)
+            switch.Position = UDim2.new(1, -46, 0.5, -8.5)
+            switch.BackgroundColor3 = state and WindUI.CurrentTheme.Accent or Color3.fromRGB(36, 26, 26)
             Instance.new("UICorner", switch).CornerRadius = UDim.new(1, 0)
 
             local knob = Instance.new("Frame", switch)
@@ -837,61 +933,60 @@ function WindUI:CreateWindow(title)
             knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
             Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
-            tBtn.MouseEnter:Connect(function() Tween(tBtn, {Time=0.12}, {BackgroundColor3=WindUI.CurrentTheme.Tertiary}) end)
-            tBtn.MouseLeave:Connect(function() Tween(tBtn, {Time=0.12}, {BackgroundColor3=WindUI.CurrentTheme.Secondary}) end)
-            
+            tBtn.MouseEnter:Connect(function() Tween(tBtn, {Time=0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Tertiary}) end)
+            tBtn.MouseLeave:Connect(function() Tween(tBtn, {Time=0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Secondary}) end)
             tBtn.MouseButton1Click:Connect(function()
                 state = not state
-                Tween(switch, {Time=0.2}, {BackgroundColor3 = state and WindUI.CurrentTheme.Accent or Color3.fromRGB(35, 35, 40)})
-                Tween(knob, {Time=0.2, Style=Enum.EasingStyle.Back}, {Position = state and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)})
+                Tween(switch, {Time = 0.2, Style = Enum.EasingStyle.Quart}, {BackgroundColor3 = state and WindUI.CurrentTheme.Accent or Color3.fromRGB(36, 26, 26)})
+                Tween(knob, {Time = 0.2, Style = Enum.EasingStyle.Back}, {Position = state and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)})
                 pcall(callback, state)
             end)
         end
 
-        -- 3. Slider Widget
         function Tab:CreateSlider(text, min, max, default, callback)
-            local sFrame = Instance.new("Frame", self.Scroll)
-            sFrame.Size = UDim2.new(0.96, 0, 0, 48)
+            local sFrame = Instance.new("Frame", scroll)
+            sFrame.Size = UDim2.new(0.96, 0, 0, 50)
             sFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
             Instance.new("UICorner", sFrame).CornerRadius = UDim.new(0, 6)
             local sfStroke = Instance.new("UIStroke", sFrame)
             sfStroke.Color = WindUI.CurrentTheme.Border
+            sfStroke.Thickness = 1
 
             local lbl = Instance.new("TextLabel", sFrame)
             lbl.Text = text
             lbl.Size = UDim2.new(0.65, 0, 0, 20)
-            lbl.Position = UDim2.new(0, 14, 0, 4)
+            lbl.Position = UDim2.new(0, 12, 0, 6)
+            lbl.BackgroundTransparency = 1
             lbl.TextColor3 = WindUI.CurrentTheme.Text
             lbl.Font = WindUI.CurrentFont
             lbl.TextSize = 11
             lbl.TextXAlignment = Enum.TextXAlignment.Left
-            lbl.BackgroundTransparency = 1
 
             local valLbl = Instance.new("TextLabel", sFrame)
             valLbl.Text = tostring(default)
-            valLbl.Size = UDim2.new(0.35, -14, 0, 20)
-            valLbl.Position = UDim2.new(0.65, 0, 0, 4)
+            valLbl.Size = UDim2.new(0.35, -12, 0, 20)
+            valLbl.Position = UDim2.new(0.65, 0, 0, 6)
+            valLbl.BackgroundTransparency = 1
             valLbl.TextColor3 = WindUI.CurrentTheme.Accent
             valLbl.Font = Enum.Font.GothamBold
             valLbl.TextSize = 11
             valLbl.TextXAlignment = Enum.TextXAlignment.Right
-            valLbl.BackgroundTransparency = 1
 
             local track = Instance.new("Frame", sFrame)
-            track.Size = UDim2.new(1, -28, 0, 4)
-            track.Position = UDim2.new(0, 14, 0, 32)
-            track.BackgroundColor3 = Color3.fromRGB(32, 32, 38)
+            track.Size = UDim2.new(1, -24, 0, 4)
+            track.Position = UDim2.new(0, 12, 0, 34)
+            track.BackgroundColor3 = Color3.fromRGB(30, 22, 22)
             Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
 
             local fill = Instance.new("Frame", track)
-            fill.Size = UDim2.new((default-min)/(max-min), 0, 1, 0)
+            fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
             fill.BackgroundColor3 = WindUI.CurrentTheme.Accent
             Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
 
             local knob = Instance.new("TextButton", track)
-            knob.Size = UDim2.new(0, 10, 0, 14)
+            knob.Size = UDim2.new(0, 10, 0, 16)
             knob.AnchorPoint = Vector2.new(0.5, 0.5)
-            knob.Position = UDim2.new((default-min)/(max-min), 0, 0.5, 0)
+            knob.Position = UDim2.new((default - min) / (max - min), 0, 0.5, 0)
             knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
             knob.Text = ""
             Instance.new("UICorner", knob).CornerRadius = UDim.new(0, 3)
@@ -910,494 +1005,1810 @@ function WindUI:CreateWindow(title)
                 if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = true end
             end)
             UserInputService.InputChanged:Connect(function(input)
-                if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then UpdateSlider(input) end
+                if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                    UpdateSlider(input)
+                end
             end)
             UserInputService.InputEnded:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
             end)
         end
 
-        -- 4. Standard Dropdown Widget
         function Tab:CreateDropdown(text, options, callback)
+            local scroll = self.Scroll
             local expanded = false
-            local dFrame = Instance.new("Frame", self.Scroll)
+            local selected = options[1] or "None"
+            local MAX_ROWS = 5
+            local ITEM_H   = 34
+            local visibleH = math.min(#options, MAX_ROWS) * ITEM_H
+            -- header(40) + sep(1) + search(30) + gap(6) + options + pad(6)
+            local expandedH = 40 + 1 + 30 + 6 + visibleH + 6
+
+            -- Outer wrapper (clipped)
+            local dFrame = Instance.new("Frame", scroll)
             dFrame.Size = UDim2.new(0.96, 0, 0, 40)
             dFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
             dFrame.ClipsDescendants = true
-            Instance.new("UICorner", dFrame).CornerRadius = UDim.new(0, 6)
+            Instance.new("UICorner", dFrame).CornerRadius = UDim.new(0, 9)
             local dfStroke = Instance.new("UIStroke", dFrame)
             dfStroke.Color = WindUI.CurrentTheme.Border
+            dfStroke.Thickness = 1
 
-            local trigger = Instance.new("TextButton", dFrame)
-            trigger.Size = UDim2.new(1, 0, 0, 40)
-            trigger.BackgroundTransparency = 1
-            trigger.Text = ""
+            -- Accent left bar
+            local ddBar = Instance.new("Frame", dFrame)
+            ddBar.Size = UDim2.new(0, 3, 0, 22)
+            ddBar.Position = UDim2.new(0, 0, 0, 9)
+            ddBar.BackgroundColor3 = WindUI.CurrentTheme.Accent
+            ddBar.BackgroundTransparency = 0.3
+            Instance.new("UICorner", ddBar).CornerRadius = UDim.new(1, 0)
 
-            local lbl = Instance.new("TextLabel", dFrame)
+            local header = Instance.new("TextButton", dFrame)
+            header.Size = UDim2.new(1, 0, 0, 40)
+            header.BackgroundTransparency = 1
+            header.Text = ""
+
+            -- Label (left)
+            local lbl = Instance.new("TextLabel", header)
             lbl.Text = text
-            lbl.Size = UDim2.new(1, -60, 0, 40)
+            lbl.Size = UDim2.new(0.45, 0, 1, 0)
             lbl.Position = UDim2.new(0, 14, 0, 0)
-            lbl.Font = WindUI.CurrentFont
-            lbl.TextColor3 = WindUI.CurrentTheme.Text
-            lbl.TextSize = 11
-            lbl.TextXAlignment = Enum.TextXAlignment.Left
             lbl.BackgroundTransparency = 1
+            lbl.TextColor3 = WindUI.CurrentTheme.SubText
+            lbl.TextXAlignment = Enum.TextXAlignment.Left
+            lbl.Font = WindUI.CurrentFont
+            lbl.TextSize = 11
 
-            local arrow = Instance.new("ImageLabel", dFrame)
-            arrow.Size = UDim2.new(0, 12, 0, 12)
-            arrow.Position = UDim2.new(1, -26, 0, 14)
+            -- Selected pill badge (right of label)
+            local selPill = Instance.new("Frame", header)
+            selPill.Size = UDim2.new(0, 0, 0, 22)
+            selPill.AutomaticSize = Enum.AutomaticSize.X
+            selPill.Position = UDim2.new(0.45, 4, 0.5, -11)
+            selPill.BackgroundColor3 = WindUI.CurrentTheme.Accent
+            selPill.BackgroundTransparency = 0.78
+            Instance.new("UICorner", selPill).CornerRadius = UDim.new(1, 0)
+            local selPillPad = Instance.new("UIPadding", selPill)
+            selPillPad.PaddingLeft = UDim.new(0, 8)
+            selPillPad.PaddingRight = UDim.new(0, 8)
+            local selPillStroke = Instance.new("UIStroke", selPill)
+            selPillStroke.Color = WindUI.CurrentTheme.Accent
+            selPillStroke.Thickness = 1
+            selPillStroke.Transparency = 0.5
+
+            local selLbl = Instance.new("TextLabel", selPill)
+            selLbl.Text = selected
+            selLbl.Size = UDim2.new(0, 0, 1, 0)
+            selLbl.AutomaticSize = Enum.AutomaticSize.X
+            selLbl.BackgroundTransparency = 1
+            selLbl.TextColor3 = WindUI.CurrentTheme.Accent
+            selLbl.Font = Enum.Font.GothamBold
+            selLbl.TextSize = 10
+
+            local arrow = Instance.new("ImageLabel", header)
+            arrow.Size = UDim2.new(0, 13, 0, 13)
+            arrow.Position = UDim2.new(1, -24, 0.5, -6.5)
             arrow.BackgroundTransparency = 1
-            arrow.ImageColor3 = WindUI.CurrentTheme.SubText
+            arrow.ImageColor3 = WindUI.CurrentTheme.Accent
+            arrow.ImageTransparency = 0.4
+            arrow.ScaleType = Enum.ScaleType.Fit
             task.spawn(function() ApplyIcon(arrow, GetIcon("chevron-down")) end)
 
+            -- Separator
+            local divider = Instance.new("Frame", dFrame)
+            divider.Size = UDim2.new(1, -24, 0, 1)
+            divider.Position = UDim2.new(0, 12, 0, 40)
+            divider.BackgroundColor3 = WindUI.CurrentTheme.Border
+            divider.BorderSizePixel = 0
+
+            -- Search bar
+            local searchFrame = Instance.new("Frame", dFrame)
+            searchFrame.Size = UDim2.new(1, -16, 0, 26)
+            searchFrame.Position = UDim2.new(0, 8, 0, 45)
+            searchFrame.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
+            Instance.new("UICorner", searchFrame).CornerRadius = UDim.new(0, 8)
+            local searchStroke = Instance.new("UIStroke", searchFrame)
+            searchStroke.Color = WindUI.CurrentTheme.Border
+            searchStroke.Thickness = 1
+
+            local searchIco = Instance.new("ImageLabel", searchFrame)
+            searchIco.Size = UDim2.new(0, 11, 0, 11)
+            searchIco.Position = UDim2.new(0, 8, 0.5, -5.5)
+            searchIco.BackgroundTransparency = 1
+            searchIco.ImageColor3 = WindUI.CurrentTheme.SubText
+            searchIco.ScaleType = Enum.ScaleType.Fit
+            task.spawn(function() ApplyIcon(searchIco, GetIcon("search")) end)
+
+            local searchInput = Instance.new("TextBox", searchFrame)
+            searchInput.Size = UDim2.new(1, -28, 1, 0)
+            searchInput.Position = UDim2.new(0, 24, 0, 0)
+            searchInput.BackgroundTransparency = 1
+            searchInput.Font = Enum.Font.Gotham
+            searchInput.Text = ""
+            searchInput.PlaceholderText = "Search options..."
+            searchInput.TextColor3 = WindUI.CurrentTheme.Text
+            searchInput.PlaceholderColor3 = WindUI.CurrentTheme.SubText
+            searchInput.TextSize = 10
+            searchInput.TextXAlignment = Enum.TextXAlignment.Left
+            searchInput.ClearTextOnFocus = false
+
+            searchInput.Focused:Connect(function()
+                Tween(searchStroke, {Time=0.15}, {Color = WindUI.CurrentTheme.Accent, Transparency = 0.4})
+            end)
+            searchInput.FocusLost:Connect(function()
+                Tween(searchStroke, {Time=0.15}, {Color = WindUI.CurrentTheme.Border, Transparency = 0})
+            end)
+
+            -- Options container (scrollable)
             local optCont = Instance.new("ScrollingFrame", dFrame)
-            optCont.Size = UDim2.new(1, -16, 1, -46)
-            optCont.Position = UDim2.new(0, 8, 0, 42)
+            optCont.Size = UDim2.new(1, -8, 0, visibleH)
+            optCont.Position = UDim2.new(0, 4, 0, 40 + 1 + 30 + 6)
             optCont.BackgroundTransparency = 1
             optCont.ScrollBarThickness = 2
             optCont.ScrollBarImageColor3 = WindUI.CurrentTheme.Accent
-
+            optCont.ScrollBarImageTransparency = 0.5
+            optCont.CanvasSize = UDim2.new(0, 0, 0, #options * ITEM_H)
+            optCont.ClipsDescendants = true
             local optLayout = Instance.new("UIListLayout", optCont)
-            optLayout.Padding = UDim.new(0, 3)
+            optLayout.Padding = UDim.new(0, 2)
+            local optPad = Instance.new("UIPadding", optCont)
+            optPad.PaddingLeft = UDim.new(0, 4)
+            optPad.PaddingRight = UDim.new(0, 4)
 
-            local function refresh()
-                for _, c in ipairs(optCont:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
-                for _, opt in ipairs(options) do
-                    local ob = Instance.new("TextButton", optCont)
-                    ob.Size = UDim2.new(1, 0, 0, 26)
-                    ob.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
-                    ob.Text = opt
-                    ob.Font = WindUI.CurrentFont
-                    ob.TextColor3 = WindUI.CurrentTheme.SubText
-                    ob.TextSize = 10
-                    Instance.new("UICorner", ob).CornerRadius = UDim.new(0, 4)
+            local optButtons = {}
 
-                    ob.MouseButton1Click:Connect(function()
-                        lbl.Text = text .. " : " .. opt
-                        expanded = false
-                        Tween(dFrame, {Time=0.2}, {Size = UDim2.new(0.96, 0, 0, 40)})
-                        Tween(arrow, {Time=0.2}, {Rotation = 0})
-                        pcall(callback, opt)
-                    end)
-                end
+            for i, opt in ipairs(options) do
+                local o = Instance.new("TextButton", optCont)
+                o.Size = UDim2.new(1, 0, 0, ITEM_H - 2)
+                o.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
+                o.BackgroundTransparency = 1
+                o.Text = ""
+                Instance.new("UICorner", o).CornerRadius = UDim.new(0, 7)
+
+                -- Check mark icon (shown when selected)
+                local checkIco = Instance.new("ImageLabel", o)
+                checkIco.Size = UDim2.new(0, 11, 0, 11)
+                checkIco.Position = UDim2.new(0, 8, 0.5, -5.5)
+                checkIco.BackgroundTransparency = 1
+                checkIco.ImageColor3 = WindUI.CurrentTheme.Accent
+                checkIco.ImageTransparency = opt == selected and 0 or 1
+                checkIco.ScaleType = Enum.ScaleType.Fit
+                task.spawn(function() ApplyIcon(checkIco, GetIcon("check")) end)
+
+                local oLbl = Instance.new("TextLabel", o)
+                oLbl.Text = opt
+                oLbl.Size = UDim2.new(1, -32, 1, 0)
+                oLbl.Position = UDim2.new(0, 24, 0, 0)
+                oLbl.BackgroundTransparency = 1
+                oLbl.TextColor3 = opt == selected and WindUI.CurrentTheme.Text or WindUI.CurrentTheme.SubText
+                oLbl.Font = opt == selected and Enum.Font.GothamBold or WindUI.CurrentFont
+                oLbl.TextSize = 11
+                oLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+                o.MouseEnter:Connect(function()
+                    if opt ~= selected then
+                        Tween(o, {Time=0.1}, {BackgroundTransparency = 0.88})
+                        Tween(oLbl, {Time=0.1}, {TextColor3 = WindUI.CurrentTheme.Text})
+                    end
+                end)
+                o.MouseLeave:Connect(function()
+                    if opt ~= selected then
+                        Tween(o, {Time=0.1}, {BackgroundTransparency = 1})
+                        Tween(oLbl, {Time=0.1}, {TextColor3 = WindUI.CurrentTheme.SubText})
+                    end
+                end)
+                o.MouseButton1Click:Connect(function()
+                    -- Deselect old
+                    for j, btn in ipairs(optButtons) do
+                        local prevLbl = btn:FindFirstChildOfClass("TextLabel")
+                        local prevIco = btn:FindFirstChildOfClass("ImageLabel")
+                        if prevLbl then
+                            Tween(prevLbl, {Time=0.12}, {TextColor3 = WindUI.CurrentTheme.SubText})
+                            prevLbl.Font = WindUI.CurrentFont
+                        end
+                        if prevIco then Tween(prevIco, {Time=0.12}, {ImageTransparency = 1}) end
+                        Tween(btn, {Time=0.12}, {BackgroundTransparency = 1})
+                    end
+                    -- Select new
+                    selected = opt
+                    selLbl.Text = opt
+                    oLbl.Font = Enum.Font.GothamBold
+                    Tween(oLbl, {Time=0.12}, {TextColor3 = WindUI.CurrentTheme.Text})
+                    Tween(checkIco, {Time=0.12}, {ImageTransparency = 0})
+                    Tween(o, {Time=0.12}, {BackgroundTransparency = 0.85})
+                    -- Collapse
+                    expanded = false
+                    searchInput.Text = ""
+                    for _, btn in ipairs(optButtons) do btn.Visible = true end
+                    optCont.CanvasSize = UDim2.new(0, 0, 0, #options * ITEM_H)
+                    Tween(dFrame, {Time = 0.22, Style = Enum.EasingStyle.Quart}, {Size = UDim2.new(0.96, 0, 0, 40)})
+                    Tween(arrow, {Time = 0.22}, {Rotation = 0})
+                    Tween(dfStroke, {Time=0.15}, {Color = WindUI.CurrentTheme.Border})
+                    pcall(callback, opt)
+                end)
+
+                optButtons[i] = o
             end
-            refresh()
 
-            trigger.MouseButton1Click:Connect(function()
+            -- Live search filter
+            searchInput:GetPropertyChangedSignal("Text"):Connect(function()
+                local q = searchInput.Text:lower()
+                local count = 0
+                for i, btn in ipairs(optButtons) do
+                    local match = q == "" or options[i]:lower():find(q, 1, true) ~= nil
+                    btn.Visible = match
+                    if match then count = count + 1 end
+                end
+                optCont.CanvasSize = UDim2.new(0, 0, 0, count * ITEM_H)
+            end)
+
+            header.MouseEnter:Connect(function()
+                if not expanded then Tween(dFrame, {Time=0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Tertiary}) end
+            end)
+            header.MouseLeave:Connect(function()
+                if not expanded then Tween(dFrame, {Time=0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Secondary}) end
+            end)
+
+            header.MouseButton1Click:Connect(function()
                 expanded = not expanded
-                local targetH = expanded and math.clamp(46 + (#options * 29), 40, 200) or 40
-                Tween(dFrame, {Time=0.25}, {Size = UDim2.new(0.96, 0, 0, targetH)})
-                Tween(arrow, {Time=0.25}, {Rotation = expanded and 180 or 0})
+                if expanded then
+                    Tween(dFrame, {Time = 0.28, Style = Enum.EasingStyle.Quart}, {Size = UDim2.new(0.96, 0, 0, expandedH), BackgroundColor3 = WindUI.CurrentTheme.Secondary})
+                    Tween(dfStroke, {Time=0.2}, {Color = WindUI.CurrentTheme.Accent, Transparency = 0.55})
+                    Tween(ddBar, {Time=0.15}, {BackgroundTransparency = 0})
+                else
+                    Tween(dFrame, {Time = 0.22, Style = Enum.EasingStyle.Quart}, {Size = UDim2.new(0.96, 0, 0, 40)})
+                    Tween(dfStroke, {Time=0.15}, {Color = WindUI.CurrentTheme.Border, Transparency = 0})
+                    Tween(ddBar, {Time=0.15}, {BackgroundTransparency = 0.3})
+                    searchInput.Text = ""
+                    for _, btn in ipairs(optButtons) do btn.Visible = true end
+                    optCont.CanvasSize = UDim2.new(0, 0, 0, #options * ITEM_H)
+                end
+                Tween(arrow, {Time = 0.25}, {Rotation = expanded and 180 or 0})
             end)
         end
 
-        -- 5. MultiDropdown Widget
         function Tab:CreateMultiDropdown(text, options, callback)
-            local expanded = false
+            local scroll = self.Scroll
             local selected = {}
-            local dFrame = Instance.new("Frame", self.Scroll)
+            local expanded = false
+            local MAX_ROWS = 5
+            local ITEM_H   = 34
+            local visibleH = math.min(#options, MAX_ROWS) * ITEM_H
+            local expandedH = 40 + 1 + 30 + 6 + visibleH + 6
+
+            local dFrame = Instance.new("Frame", scroll)
             dFrame.Size = UDim2.new(0.96, 0, 0, 40)
             dFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
             dFrame.ClipsDescendants = true
-            Instance.new("UICorner", dFrame).CornerRadius = UDim.new(0, 6)
+            Instance.new("UICorner", dFrame).CornerRadius = UDim.new(0, 9)
             local dfStroke = Instance.new("UIStroke", dFrame)
             dfStroke.Color = WindUI.CurrentTheme.Border
+            dfStroke.Thickness = 1
 
-            local trigger = Instance.new("TextButton", dFrame)
-            trigger.Size = UDim2.new(1, 0, 0, 40)
-            trigger.BackgroundTransparency = 1
-            trigger.Text = ""
+            local ddBar = Instance.new("Frame", dFrame)
+            ddBar.Size = UDim2.new(0, 3, 0, 22)
+            ddBar.Position = UDim2.new(0, 0, 0, 9)
+            ddBar.BackgroundColor3 = WindUI.CurrentTheme.Accent
+            ddBar.BackgroundTransparency = 0.3
+            Instance.new("UICorner", ddBar).CornerRadius = UDim.new(1, 0)
 
-            local lbl = Instance.new("TextLabel", dFrame)
-            lbl.Text = text .. " (0)"
-            lbl.Size = UDim2.new(1, -60, 0, 40)
+            local header = Instance.new("TextButton", dFrame)
+            header.Size = UDim2.new(1, 0, 0, 40)
+            header.BackgroundTransparency = 1
+            header.Text = ""
+
+            local lbl = Instance.new("TextLabel", header)
+            lbl.Text = text
+            lbl.Size = UDim2.new(0.45, 0, 1, 0)
             lbl.Position = UDim2.new(0, 14, 0, 0)
-            lbl.Font = WindUI.CurrentFont
-            lbl.TextColor3 = WindUI.CurrentTheme.Text
-            lbl.TextSize = 11
-            lbl.TextXAlignment = Enum.TextXAlignment.Left
             lbl.BackgroundTransparency = 1
+            lbl.TextColor3 = WindUI.CurrentTheme.SubText
+            lbl.TextXAlignment = Enum.TextXAlignment.Left
+            lbl.Font = WindUI.CurrentFont
+            lbl.TextSize = 11
 
-            local arrow = Instance.new("ImageLabel", dFrame)
-            arrow.Size = UDim2.new(0, 12, 0, 12)
-            arrow.Position = UDim2.new(1, -26, 0, 14)
+            -- Badge count pill (right of label)
+            local selPill = Instance.new("Frame", header)
+            selPill.Size = UDim2.new(0, 0, 0, 22)
+            selPill.AutomaticSize = Enum.AutomaticSize.X
+            selPill.Position = UDim2.new(0.45, 4, 0.5, -11)
+            selPill.BackgroundColor3 = WindUI.CurrentTheme.Accent
+            selPill.BackgroundTransparency = 0.78
+            Instance.new("UICorner", selPill).CornerRadius = UDim.new(1, 0)
+            local selPillPad = Instance.new("UIPadding", selPill)
+            selPillPad.PaddingLeft = UDim.new(0, 8)
+            selPillPad.PaddingRight = UDim.new(0, 8)
+            local selPillStroke = Instance.new("UIStroke", selPill)
+            selPillStroke.Color = WindUI.CurrentTheme.Accent
+            selPillStroke.Thickness = 1
+            selPillStroke.Transparency = 0.5
+
+            local selLbl = Instance.new("TextLabel", selPill)
+            selLbl.Text = "0 selected"
+            selLbl.Size = UDim2.new(0, 0, 1, 0)
+            selLbl.AutomaticSize = Enum.AutomaticSize.X
+            selLbl.BackgroundTransparency = 1
+            selLbl.TextColor3 = WindUI.CurrentTheme.Accent
+            selLbl.Font = Enum.Font.GothamBold
+            selLbl.TextSize = 10
+
+            local arrow = Instance.new("ImageLabel", header)
+            arrow.Size = UDim2.new(0, 13, 0, 13)
+            arrow.Position = UDim2.new(1, -24, 0.5, -6.5)
             arrow.BackgroundTransparency = 1
-            arrow.ImageColor3 = WindUI.CurrentTheme.SubText
+            arrow.ImageColor3 = WindUI.CurrentTheme.Accent
+            arrow.ImageTransparency = 0.4
+            arrow.ScaleType = Enum.ScaleType.Fit
             task.spawn(function() ApplyIcon(arrow, GetIcon("chevron-down")) end)
 
+            local divider = Instance.new("Frame", dFrame)
+            divider.Size = UDim2.new(1, -24, 0, 1)
+            divider.Position = UDim2.new(0, 12, 0, 40)
+            divider.BackgroundColor3 = WindUI.CurrentTheme.Border
+            divider.BorderSizePixel = 0
+
+            local searchFrame = Instance.new("Frame", dFrame)
+            searchFrame.Size = UDim2.new(1, -16, 0, 26)
+            searchFrame.Position = UDim2.new(0, 8, 0, 45)
+            searchFrame.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
+            Instance.new("UICorner", searchFrame).CornerRadius = UDim.new(0, 8)
+            local searchStroke = Instance.new("UIStroke", searchFrame)
+            searchStroke.Color = WindUI.CurrentTheme.Border
+            searchStroke.Thickness = 1
+
+            local searchIco = Instance.new("ImageLabel", searchFrame)
+            searchIco.Size = UDim2.new(0, 11, 0, 11)
+            searchIco.Position = UDim2.new(0, 8, 0.5, -5.5)
+            searchIco.BackgroundTransparency = 1
+            searchIco.ImageColor3 = WindUI.CurrentTheme.SubText
+            searchIco.ScaleType = Enum.ScaleType.Fit
+            task.spawn(function() ApplyIcon(searchIco, GetIcon("search")) end)
+
+            local searchInput = Instance.new("TextBox", searchFrame)
+            searchInput.Size = UDim2.new(1, -28, 1, 0)
+            searchInput.Position = UDim2.new(0, 24, 0, 0)
+            searchInput.BackgroundTransparency = 1
+            searchInput.Font = Enum.Font.Gotham
+            searchInput.Text = ""
+            searchInput.PlaceholderText = "Search options..."
+            searchInput.TextColor3 = WindUI.CurrentTheme.Text
+            searchInput.PlaceholderColor3 = WindUI.CurrentTheme.SubText
+            searchInput.TextSize = 10
+            searchInput.TextXAlignment = Enum.TextXAlignment.Left
+            searchInput.ClearTextOnFocus = false
+
+            searchInput.Focused:Connect(function()
+                Tween(searchStroke, {Time=0.15}, {Color = WindUI.CurrentTheme.Accent, Transparency = 0.4})
+            end)
+            searchInput.FocusLost:Connect(function()
+                Tween(searchStroke, {Time=0.15}, {Color = WindUI.CurrentTheme.Border, Transparency = 0})
+            end)
+
             local optCont = Instance.new("ScrollingFrame", dFrame)
-            optCont.Size = UDim2.new(1, -16, 1, -46)
-            optCont.Position = UDim2.new(0, 8, 0, 42)
+            optCont.Size = UDim2.new(1, -8, 0, visibleH)
+            optCont.Position = UDim2.new(0, 4, 0, 40 + 1 + 30 + 6)
             optCont.BackgroundTransparency = 1
             optCont.ScrollBarThickness = 2
             optCont.ScrollBarImageColor3 = WindUI.CurrentTheme.Accent
-            Instance.new("UIListLayout", optCont).Padding = UDim.new(0, 3)
+            optCont.ScrollBarImageTransparency = 0.5
+            optCont.CanvasSize = UDim2.new(0, 0, 0, #options * ITEM_H)
+            optCont.ClipsDescendants = true
+            local optLayout = Instance.new("UIListLayout", optCont)
+            optLayout.Padding = UDim.new(0, 2)
+            local optPad = Instance.new("UIPadding", optCont)
+            optPad.PaddingLeft = UDim.new(0, 4)
+            optPad.PaddingRight = UDim.new(0, 4)
 
-            for _, opt in ipairs(options) do
-                local ob = Instance.new("TextButton", optCont)
-                ob.Size = UDim2.new(1, 0, 0, 26)
-                ob.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
-                ob.Text = opt
-                ob.Font = WindUI.CurrentFont
-                ob.TextColor3 = WindUI.CurrentTheme.SubText
-                ob.TextSize = 10
-                Instance.new("UICorner", ob).CornerRadius = UDim.new(0, 4)
+            local optButtons = {}
 
-                ob.MouseButton1Click:Connect(function()
-                    if table.find(selected, opt) then
-                        table.remove(selected, table.find(selected, opt))
-                        ob.TextColor3 = WindUI.CurrentTheme.SubText
-                    else
-                        table.insert(selected, opt)
-                        ob.TextColor3 = WindUI.CurrentTheme.Accent
-                    end
-                    lbl.Text = text .. " (" .. #selected .. ")"
-                    pcall(callback, selected)
-                end)
+            local function UpdateBadge()
+                local count = 0
+                for _ in pairs(selected) do count = count + 1 end
+                selLbl.Text = count > 0 and (tostring(count) .. " selected") or "0 selected"
             end
 
-            trigger.MouseButton1Click:Connect(function()
-                expanded = not expanded
-                local targetH = expanded and math.clamp(46 + (#options * 29), 40, 200) or 40
-                Tween(dFrame, {Time=0.25}, {Size = UDim2.new(0.96, 0, 0, targetH)})
-                Tween(arrow, {Time=0.25}, {Rotation = expanded and 180 or 0})
-            end)
-        end
+            for i, opt in ipairs(options) do
+                local o = Instance.new("TextButton", optCont)
+                o.Size = UDim2.new(1, 0, 0, ITEM_H - 2)
+                o.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
+                o.BackgroundTransparency = 1
+                o.Text = ""
+                Instance.new("UICorner", o).CornerRadius = UDim.new(0, 7)
 
-        -- 6. TextBox Input Widget
-        function Tab:CreateInput(text, placeholder, callback)
-            local iFrame = Instance.new("Frame", self.Scroll)
-            iFrame.Size = UDim2.new(0.96, 0, 0, 48)
-            iFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
-            Instance.new("UICorner", iFrame).CornerRadius = UDim.new(0, 6)
-            local ifStroke = Instance.new("UIStroke", iFrame)
-            ifStroke.Color = WindUI.CurrentTheme.Border
+                -- Checkbox box
+                local checkBox = Instance.new("Frame", o)
+                checkBox.Size = UDim2.new(0, 14, 0, 14)
+                checkBox.Position = UDim2.new(0, 8, 0.5, -7)
+                checkBox.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
+                Instance.new("UICorner", checkBox).CornerRadius = UDim.new(0, 3)
+                local checkBoxStroke = Instance.new("UIStroke", checkBox)
+                checkBoxStroke.Color = WindUI.CurrentTheme.Border
+                checkBoxStroke.Thickness = 1.2
 
-            local bar = Instance.new("Frame", iFrame)
-            bar.Size = UDim2.new(0, 2, 0, 24)
-            bar.Position = UDim2.new(0, 0, 0.5, -12)
-            bar.BackgroundColor3 = WindUI.CurrentTheme.Accent
-            bar.BackgroundTransparency = 1
+                local checkIco = Instance.new("ImageLabel", checkBox)
+                checkIco.Size = UDim2.new(0, 9, 0, 9)
+                checkIco.Position = UDim2.new(0.5, 0, 0.5, 0)
+                checkIco.AnchorPoint = Vector2.new(0.5, 0.5)
+                checkIco.BackgroundTransparency = 1
+                checkIco.ImageColor3 = Color3.fromRGB(255, 255, 255)
+                checkIco.ImageTransparency = 1
+                checkIco.ScaleType = Enum.ScaleType.Fit
+                task.spawn(function() ApplyIcon(checkIco, GetIcon("check")) end)
 
-            local iLbl = Instance.new("TextLabel", iFrame)
-            iLbl.Text = text
-            iLbl.Size = UDim2.new(1, -20, 0, 18)
-            iLbl.Position = UDim2.new(0, 14, 0, 4)
-            iLbl.Font = WindUI.CurrentFont
-            iLbl.TextColor3 = WindUI.CurrentTheme.SubText
-            iLbl.TextSize = 10
-            iLbl.TextXAlignment = Enum.TextXAlignment.Left
-            iLbl.BackgroundTransparency = 1
+                local oLbl = Instance.new("TextLabel", o)
+                oLbl.Text = opt
+                oLbl.Size = UDim2.new(1, -36, 1, 0)
+                oLbl.Position = UDim2.new(0, 28, 0, 0)
+                oLbl.BackgroundTransparency = 1
+                oLbl.TextColor3 = WindUI.CurrentTheme.SubText
+                oLbl.Font = WindUI.CurrentFont
+                oLbl.TextSize = 11
+                oLbl.TextXAlignment = Enum.TextXAlignment.Left
 
-            local inputBox = Instance.new("TextBox", iFrame)
-            inputBox.Size = UDim2.new(1, -28, 0, 22)
-            inputBox.Position = UDim2.new(0, 14, 0, 22)
-            inputBox.BackgroundTransparency = 1
-            inputBox.Font = WindUI.CurrentFont
-            inputBox.Text = ""
-            inputBox.PlaceholderText = placeholder or "Type here..."
-            inputBox.TextColor3 = WindUI.CurrentTheme.Text
-            inputBox.PlaceholderColor3 = WindUI.CurrentTheme.SubText
-            inputBox.TextSize = 11
-            inputBox.TextXAlignment = Enum.TextXAlignment.Left
-            inputBox.ClearTextOnFocus = false
+                o.MouseEnter:Connect(function()
+                    if not selected[opt] then
+                        Tween(o, {Time=0.1}, {BackgroundTransparency = 0.88})
+                        Tween(oLbl, {Time=0.1}, {TextColor3 = WindUI.CurrentTheme.Text})
+                    end
+                end)
+                o.MouseLeave:Connect(function()
+                    if not selected[opt] then
+                        Tween(o, {Time=0.1}, {BackgroundTransparency = 1})
+                        Tween(oLbl, {Time=0.1}, {TextColor3 = WindUI.CurrentTheme.SubText})
+                    end
+                end)
+                o.MouseButton1Click:Connect(function()
+                    if selected[opt] then
+                        selected[opt] = nil
+                        Tween(checkBox, {Time=0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Tertiary})
+                        Tween(checkBoxStroke, {Time=0.12}, {Color = WindUI.CurrentTheme.Border})
+                        Tween(checkIco, {Time=0.12}, {ImageTransparency = 1})
+                        Tween(oLbl, {Time=0.12}, {TextColor3 = WindUI.CurrentTheme.SubText})
+                        oLbl.Font = WindUI.CurrentFont
+                        Tween(o, {Time=0.12}, {BackgroundTransparency = 1})
+                    else
+                        selected[opt] = true
+                        Tween(checkBox, {Time=0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Accent})
+                        Tween(checkBoxStroke, {Time=0.12}, {Color = WindUI.CurrentTheme.Accent})
+                        Tween(checkIco, {Time=0.12}, {ImageTransparency = 0})
+                        Tween(oLbl, {Time=0.12}, {TextColor3 = WindUI.CurrentTheme.Text})
+                        oLbl.Font = Enum.Font.GothamBold
+                        Tween(o, {Time=0.12}, {BackgroundTransparency = 0.85})
+                    end
+                    UpdateBadge()
+                    local result = {}
+                    for k in pairs(selected) do table.insert(result, k) end
+                    pcall(callback, result)
+                end)
 
-            inputBox:GetPropertyChangedSignal("Text"):Connect(function() pcall(callback, inputBox.Text) end)
-            inputBox.Focused:Connect(function()
-                Tween(ifStroke, {Time=0.2}, {Color = WindUI.CurrentTheme.Accent})
-                Tween(bar, {Time=0.2}, {BackgroundTransparency = 0})
-            end)
-            inputBox.FocusLost:Connect(function()
-                Tween(ifStroke, {Time=0.2}, {Color = WindUI.CurrentTheme.Border})
-                Tween(bar, {Time=0.2}, {BackgroundTransparency = 1})
-            end)
-        end
+                optButtons[i] = o
+            end
 
-        -- 7. Keybind Capturer Widget
-        function Tab:CreateKeybind(text, default, callback)
-            local currentKey = default or Enum.KeyCode.Unknown
-            local binding = false
-
-            local kFrame = Instance.new("TextButton", self.Scroll)
-            kFrame.Size = UDim2.new(0.96, 0, 0, 36)
-            kFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
-            kFrame.Text = ""
-            Instance.new("UICorner", kFrame).CornerRadius = UDim.new(0, 6)
-            local kStroke = Instance.new("UIStroke", kFrame)
-            kStroke.Color = WindUI.CurrentTheme.Border
-
-            local kLbl = Instance.new("TextLabel", kFrame)
-            kLbl.Text = text
-            kLbl.Size = UDim2.new(0.6, 0, 1, 0)
-            kLbl.Position = UDim2.new(0, 14, 0, 0)
-            kLbl.Font = WindUI.CurrentFont
-            kLbl.TextColor3 = WindUI.CurrentTheme.Text
-            kLbl.TextSize = 11
-            kLbl.TextXAlignment = Enum.TextXAlignment.Left
-            kLbl.BackgroundTransparency = 1
-
-            local bTarget = Instance.new("Frame", kFrame)
-            bTarget.Size = UDim2.new(0, 70, 0, 22)
-            bTarget.Position = UDim2.new(1, -84, 0.5, -11)
-            bTarget.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
-            Instance.new("UICorner", bTarget).CornerRadius = UDim.new(0, 5)
-
-            local bLbl = Instance.new("TextLabel", bTarget)
-            bLbl.Size = UDim2.new(1, 0, 1, 0)
-            bLbl.Text = currentKey.Name
-            bLbl.Font = Enum.Font.GothamBold
-            bLbl.TextColor3 = WindUI.CurrentTheme.Accent
-            bLbl.TextSize = 10
-            bLbl.BackgroundTransparency = 1
-
-            kFrame.MouseButton1Click:Connect(function()
-                binding = true
-                bLbl.Text = "..."
-            end)
-
-            local inputConn = UserInputService.InputBegan:Connect(function(input)
-                if binding and input.UserInputType == Enum.UserInputType.Keyboard then
-                    binding = false
-                    currentKey = input.KeyCode
-                    bLbl.Text = currentKey.Name
-                    pcall(callback, currentKey)
+            searchInput:GetPropertyChangedSignal("Text"):Connect(function()
+                local q = searchInput.Text:lower()
+                local count = 0
+                for i, btn in ipairs(optButtons) do
+                    local match = q == "" or options[i]:lower():find(q, 1, true) ~= nil
+                    btn.Visible = match
+                    if match then count = count + 1 end
                 end
+                optCont.CanvasSize = UDim2.new(0, 0, 0, count * ITEM_H)
             end)
-            table.insert(WindUI.Connections, inputConn)
 
-            local keyMatchConn = UserInputService.InputBegan:Connect(function(input, gpe)
-                if not gpe and input.KeyCode == currentKey then pcall(callback, currentKey) end
+            header.MouseEnter:Connect(function()
+                if not expanded then Tween(dFrame, {Time=0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Tertiary}) end
             end)
-            table.insert(WindUI.Connections, keyMatchConn)
+            header.MouseLeave:Connect(function()
+                if not expanded then Tween(dFrame, {Time=0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Secondary}) end
+            end)
+
+            header.MouseButton1Click:Connect(function()
+                expanded = not expanded
+                if expanded then
+                    Tween(dFrame, {Time = 0.28, Style = Enum.EasingStyle.Quart}, {Size = UDim2.new(0.96, 0, 0, expandedH), BackgroundColor3 = WindUI.CurrentTheme.Secondary})
+                    Tween(dfStroke, {Time=0.2}, {Color = WindUI.CurrentTheme.Accent, Transparency = 0.55})
+                    Tween(ddBar, {Time=0.15}, {BackgroundTransparency = 0})
+                else
+                    Tween(dFrame, {Time = 0.22, Style = Enum.EasingStyle.Quart}, {Size = UDim2.new(0.96, 0, 0, 40)})
+                    Tween(dfStroke, {Time=0.15}, {Color = WindUI.CurrentTheme.Border, Transparency = 0})
+                    Tween(ddBar, {Time=0.15}, {BackgroundTransparency = 0.3})
+                    searchInput.Text = ""
+                    for _, btn in ipairs(optButtons) do btn.Visible = true end
+                    optCont.CanvasSize = UDim2.new(0, 0, 0, #options * ITEM_H)
+                end
+                Tween(arrow, {Time = 0.25}, {Rotation = expanded and 180 or 0})
+            end)
         end
 
-        -- 8. Confirm Security Button
         function Tab:CreateConfirmButton(text, confirmText, callback, iconName)
-            local b = Instance.new("TextButton", self.Scroll)
+            local b = Instance.new("TextButton", scroll)
             b.Size = UDim2.new(0.96, 0, 0, 34)
             b.BackgroundColor3 = WindUI.CurrentTheme.Secondary
             b.Text = ""
             Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
             local bStroke = Instance.new("UIStroke", b)
             bStroke.Color = WindUI.CurrentTheme.Border
+            bStroke.Thickness = 1
+
+            local iconImg = Instance.new("ImageLabel", b)
+            iconImg.Size = UDim2.new(0, 13, 0, 13)
+            iconImg.Position = UDim2.new(0, 12, 0.5, -6.5)
+            iconImg.BackgroundTransparency = 1
+            iconImg.ImageColor3 = WindUI.CurrentTheme.Accent
+            iconImg.ScaleType = Enum.ScaleType.Fit
+            iconImg.Visible = false
+
+            local textOffset = 12
+            if iconName then
+                task.spawn(function()
+                    local iconData = GetIcon(iconName)
+                    if iconData then ApplyIcon(iconImg, iconData); iconImg.Visible = true end
+                end)
+                textOffset = 30
+            end
 
             local bLbl = Instance.new("TextLabel", b)
             bLbl.Text = text
-            bLbl.Size = UDim2.new(1, -28, 1, 0)
-            bLbl.Position = UDim2.new(0, 14, 0, 0)
+            bLbl.Size = UDim2.new(1, -(textOffset + 28), 1, 0)
+            bLbl.Position = UDim2.new(0, textOffset, 0, 0)
+            bLbl.BackgroundTransparency = 1
             bLbl.Font = WindUI.CurrentFont
             bLbl.TextColor3 = WindUI.CurrentTheme.Text
             bLbl.TextSize = 11
             bLbl.TextXAlignment = Enum.TextXAlignment.Left
-            bLbl.BackgroundTransparency = 1
 
-            local isWaitingConfirm = false
+            -- Warning icon on right
+            local warnImg = Instance.new("ImageLabel", b)
+            warnImg.Size = UDim2.new(0, 11, 0, 11)
+            warnImg.Position = UDim2.new(1, -22, 0.5, -5.5)
+            warnImg.BackgroundTransparency = 1
+            warnImg.ImageColor3 = WindUI.CurrentTheme.Accent
+            warnImg.ImageTransparency = 0.5
+            warnImg.ScaleType = Enum.ScaleType.Fit
+            task.spawn(function() ApplyIcon(warnImg, GetIcon("alert-triangle")) end)
+
+            b.MouseEnter:Connect(function()
+                Tween(b, {Time=0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Tertiary})
+                Tween(bStroke, {Time=0.12}, {Color = WindUI.CurrentTheme.Accent, Transparency = 0.5})
+                Tween(warnImg, {Time=0.12}, {ImageTransparency = 0})
+            end)
+            b.MouseLeave:Connect(function()
+                Tween(b, {Time=0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Secondary})
+                Tween(bStroke, {Time=0.12}, {Color = WindUI.CurrentTheme.Border, Transparency = 0})
+                Tween(warnImg, {Time=0.12}, {ImageTransparency = 0.5})
+            end)
+
             b.MouseButton1Click:Connect(function()
-                if not isWaitingConfirm then
-                    isWaitingConfirm = true
-                    bLbl.Text = confirmText or "Are you sure?"
-                    bLbl.TextColor3 = Color3.fromRGB(255, 100, 100)
-                    Tween(b, {Time=0.15}, {BackgroundColor3 = Color3.fromRGB(45, 20, 20)})
-                    task.delay(3, function()
-                        if isWaitingConfirm then
-                            isWaitingConfirm = false
-                            bLbl.Text = text
-                            bLbl.TextColor3 = WindUI.CurrentTheme.Text
-                            Tween(b, {Time=0.15}, {BackgroundColor3 = WindUI.CurrentTheme.Secondary})
-                        end
-                    end)
-                else
-                    isWaitingConfirm = false
-                    bLbl.Text = text
-                    bLbl.TextColor3 = WindUI.CurrentTheme.Text
-                    b.BackgroundColor3 = WindUI.CurrentTheme.AccentDark
-                    task.delay(0.1, function() b.BackgroundColor3 = WindUI.CurrentTheme.Secondary end)
-                    pcall(callback)
-                end
+                Tween(b, {Time=0.07}, {BackgroundColor3 = WindUI.CurrentTheme.AccentDark})
+                task.delay(0.1, function() Tween(b, {Time=0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Secondary}) end)
+                pcall(callback)
             end)
         end
 
-        -- 9. Section Label Title
-        function Tab:CreateSection(text)
-            local f = Instance.new("Frame", self.Scroll)
-            f.Size = UDim2.new(0.96, 0, 0, 22)
-            f.BackgroundTransparency = 1
+        function Tab:CreateInput(text, placeholder, callback)
+            local iFrame = Instance.new("Frame", scroll)
+            iFrame.Size = UDim2.new(0.96, 0, 0, 48)
+            iFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
+            Instance.new("UICorner", iFrame).CornerRadius = UDim.new(0, 8)
+            local ifStroke = Instance.new("UIStroke", iFrame)
+            ifStroke.Color = WindUI.CurrentTheme.Border
+            ifStroke.Thickness = 1
 
-            local l = Instance.new("TextLabel", f)
-            l.Text = text:upper()
-            l.Size = UDim2.new(1, 0, 1, 0)
-            l.Position = UDim2.new(0, 6, 0, 0)
-            l.Font = Enum.Font.GothamBold
-            l.TextSize = 9
-            l.TextColor3 = WindUI.CurrentTheme.Accent
-            l.TextXAlignment = Enum.TextXAlignment.Left
-            l.BackgroundTransparency = 1
+            local bar = Instance.new("Frame", iFrame)
+            bar.Size = UDim2.new(0, 3, 0, 26)
+            bar.Position = UDim2.new(0, 0, 0.5, -13)
+            bar.BackgroundColor3 = WindUI.CurrentTheme.Accent
+            bar.BackgroundTransparency = 1
+            Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+
+            local iLbl = Instance.new("TextLabel", iFrame)
+            iLbl.Text = text
+            iLbl.Size = UDim2.new(1, -20, 0, 18)
+            iLbl.Position = UDim2.new(0, 14, 0, 6)
+            iLbl.BackgroundTransparency = 1
+            iLbl.Font = WindUI.CurrentFont
+            iLbl.TextColor3 = WindUI.CurrentTheme.SubText
+            iLbl.TextSize = 10
+            iLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+            local inputBox = Instance.new("TextBox", iFrame)
+            inputBox.Size = UDim2.new(1, -28, 0, 22)
+            inputBox.Position = UDim2.new(0, 14, 0, 24)
+            inputBox.BackgroundTransparency = 1
+            inputBox.Font = WindUI.CurrentFont
+            inputBox.Text = ""
+            inputBox.PlaceholderText = placeholder or "Type here..."
+            inputBox.TextColor3 = WindUI.CurrentTheme.Text
+            inputBox.PlaceholderColor3 = WindUI.CurrentTheme.SubText
+            inputBox.TextSize = 12
+            inputBox.TextXAlignment = Enum.TextXAlignment.Left
+            inputBox.ClearTextOnFocus = false
+
+            inputBox:GetPropertyChangedSignal("Text"):Connect(function()
+                pcall(callback, inputBox.Text)
+            end)
+            inputBox.Focused:Connect(function()
+                Tween(ifStroke, {Time=0.2}, {Color = WindUI.CurrentTheme.Accent, Transparency = 0.4})
+                Tween(bar, {Time=0.2}, {BackgroundTransparency = 0})
+            end)
+            inputBox.FocusLost:Connect(function()
+                Tween(ifStroke, {Time=0.2}, {Color = WindUI.CurrentTheme.Border, Transparency = 0})
+                Tween(bar, {Time=0.2}, {BackgroundTransparency = 1})
+            end)
+        end
+
+        function Tab:CreateKeybind(text, default, callback)
+            local currentKey = default or Enum.KeyCode.Unknown
+            local binding = false
+
+            local kFrame = Instance.new("TextButton", scroll)
+            kFrame.Size = UDim2.new(0.96, 0, 0, 36)
+            kFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
+            kFrame.Text = ""
+            Instance.new("UICorner", kFrame).CornerRadius = UDim.new(0, 6)
+            local kStroke = Instance.new("UIStroke", kFrame)
+            kStroke.Color = WindUI.CurrentTheme.Border
+            kStroke.Thickness = 1
+
+            local kIco = Instance.new("ImageLabel", kFrame)
+            kIco.Size = UDim2.new(0, 13, 0, 13)
+            kIco.Position = UDim2.new(0, 12, 0.5, -6.5)
+            kIco.BackgroundTransparency = 1
+            kIco.ImageColor3 = WindUI.CurrentTheme.Accent
+            kIco.ScaleType = Enum.ScaleType.Fit
+            task.spawn(function() ApplyIcon(kIco, GetIcon("keyboard")) end)
+
+            local kLbl = Instance.new("TextLabel", kFrame)
+            kLbl.Text = text
+            kLbl.Size = UDim2.new(0.6, 0, 1, 0)
+            kLbl.Position = UDim2.new(0, 30, 0, 0)
+            kLbl.BackgroundTransparency = 1
+            kLbl.Font = WindUI.CurrentFont
+            kLbl.TextColor3 = WindUI.CurrentTheme.Text
+            kLbl.TextSize = 11
+            kLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+            local kBadge = Instance.new("Frame", kFrame)
+            kBadge.Size = UDim2.new(0, 68, 0, 20)
+            kBadge.Position = UDim2.new(1, -78, 0.5, -10)
+            kBadge.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
+            Instance.new("UICorner", kBadge).CornerRadius = UDim.new(0, 5)
+            local kbStroke = Instance.new("UIStroke", kBadge)
+            kbStroke.Color = WindUI.CurrentTheme.Accent
+            kbStroke.Thickness = 1
+            kbStroke.Transparency = 0.5
+
+            local kValLbl = Instance.new("TextLabel", kBadge)
+            kValLbl.Size = UDim2.new(1, 0, 1, 0)
+            kValLbl.BackgroundTransparency = 1
+            kValLbl.Font = Enum.Font.GothamBold
+            kValLbl.TextColor3 = WindUI.CurrentTheme.Accent
+            kValLbl.TextSize = 9
+            kValLbl.Text = tostring(currentKey):gsub("Enum.KeyCode.", "")
+
+            kFrame.MouseEnter:Connect(function() Tween(kFrame, {Time=0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Tertiary}) end)
+            kFrame.MouseLeave:Connect(function() Tween(kFrame, {Time=0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Secondary}) end)
+
+            kFrame.MouseButton1Click:Connect(function()
+                if binding then return end
+                binding = true
+                kValLbl.Text = "· · ·"
+                kValLbl.TextColor3 = WindUI.CurrentTheme.SubText
+                Tween(kbStroke, {Time=0.15}, {Transparency = 0})
+
+                local conn
+                conn = UserInputService.InputBegan:Connect(function(input, gpe)
+                    if gpe then return end
+                    if input.UserInputType == Enum.UserInputType.Keyboard then
+                        currentKey = input.KeyCode
+                        kValLbl.Text = tostring(currentKey):gsub("Enum.KeyCode.", "")
+                        kValLbl.TextColor3 = WindUI.CurrentTheme.Accent
+                        Tween(kbStroke, {Time=0.15}, {Transparency = 0.5})
+                        binding = false
+                        conn:Disconnect()
+                        pcall(callback, currentKey)
+                    end
+                end)
+            end)
+        end
+
+        function Tab:CreateLabel(title, desc)
+            local lFrame = Instance.new("Frame", scroll)
+            local hasDesc = desc and desc ~= ""
+            lFrame.Size = UDim2.new(0.96, 0, 0, hasDesc and 46 or 30)
+            lFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
+            lFrame.BackgroundTransparency = 0
+            Instance.new("UICorner", lFrame).CornerRadius = UDim.new(0, 6)
+            local lfStroke = Instance.new("UIStroke", lFrame)
+            lfStroke.Color = WindUI.CurrentTheme.Border
+            lfStroke.Thickness = 1
+
+            local bar = Instance.new("Frame", lFrame)
+            bar.Size = UDim2.new(0, 2, 0, hasDesc and 26 or 14)
+            bar.Position = UDim2.new(0, 0, 0.5, hasDesc and -13 or -7)
+            bar.BackgroundColor3 = WindUI.CurrentTheme.Accent
+            bar.BackgroundTransparency = 0.4
+            Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+
+            local tLbl = Instance.new("TextLabel", lFrame)
+            tLbl.Text = title
+            tLbl.Size = UDim2.new(1, -20, 0, 16)
+            tLbl.Position = UDim2.new(0, 10, 0, hasDesc and 7 or 7)
+            tLbl.BackgroundTransparency = 1
+            tLbl.Font = Enum.Font.GothamBold
+            tLbl.TextColor3 = WindUI.CurrentTheme.Text
+            tLbl.TextSize = 11
+            tLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+            if hasDesc then
+                local dLbl = Instance.new("TextLabel", lFrame)
+                dLbl.Text = desc
+                dLbl.Size = UDim2.new(1, -20, 0, 14)
+                dLbl.Position = UDim2.new(0, 10, 0, 25)
+                dLbl.BackgroundTransparency = 1
+                dLbl.Font = Enum.Font.GothamMedium
+                dLbl.TextColor3 = WindUI.CurrentTheme.SubText
+                dLbl.TextSize = 9
+                dLbl.TextXAlignment = Enum.TextXAlignment.Left
+                dLbl.TextWrapped = true
+            end
+        end
+
+        function Tab:CreateParagraph(title, body)
+            local pFrame = Instance.new("Frame", scroll)
+            pFrame.Size = UDim2.new(0.95, 0, 0, 0)
+            pFrame.AutomaticSize = Enum.AutomaticSize.Y
+            pFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
+            pFrame.BackgroundTransparency = 0.3
+            Instance.new("UICorner", pFrame).CornerRadius = UDim.new(0, 8)
+            local pStroke = Instance.new("UIStroke", pFrame)
+            pStroke.Color = WindUI.CurrentTheme.Border
+            pStroke.Thickness = 1
+            local pPad = Instance.new("UIPadding", pFrame)
+            pPad.PaddingTop = UDim.new(0, 10)
+            pPad.PaddingBottom = UDim.new(0, 10)
+            pPad.PaddingLeft = UDim.new(0, 7)
+            pPad.PaddingRight = UDim.new(0, 7)
+            local pLayout = Instance.new("UIListLayout", pFrame)
+            pLayout.Padding = UDim.new(0, 4)
+
+            local bar = Instance.new("Frame", pFrame)
+            bar.Size = UDim2.new(0, 3, 0, 14)
+            bar.BackgroundColor3 = WindUI.CurrentTheme.Accent
+            bar.BackgroundTransparency = 0.3
+            bar.Position = UDim2.new(0, -14, 0, 10)
+            Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+
+            local tLbl = Instance.new("TextLabel", pFrame)
+            tLbl.Text = title
+            tLbl.Size = UDim2.new(1, 0, 0, 0)
+            tLbl.AutomaticSize = Enum.AutomaticSize.Y
+            tLbl.BackgroundTransparency = 1
+            tLbl.Font = Enum.Font.GothamBold
+            tLbl.TextColor3 = WindUI.CurrentTheme.Text
+            tLbl.TextSize = 12
+            tLbl.TextXAlignment = Enum.TextXAlignment.Left
+            tLbl.TextWrapped = true
+
+            local bLbl = Instance.new("TextLabel", pFrame)
+            bLbl.Text = body
+            bLbl.Size = UDim2.new(1, 0, 0, 0)
+            bLbl.AutomaticSize = Enum.AutomaticSize.Y
+            bLbl.BackgroundTransparency = 1
+            bLbl.Font = Enum.Font.GothamMedium
+            bLbl.TextColor3 = WindUI.CurrentTheme.SubText
+            bLbl.TextSize = 11
+            bLbl.TextXAlignment = Enum.TextXAlignment.Left
+            bLbl.TextWrapped = true
+        end
+
+        function Tab:CreateCheckbox(text, default, callback)
+            local state = default or false
+
+            local cBtn = Instance.new("TextButton", scroll)
+            cBtn.Size = UDim2.new(0.96, 0, 0, 34)
+            cBtn.BackgroundColor3 = WindUI.CurrentTheme.Secondary
+            cBtn.Text = ""
+            Instance.new("UICorner", cBtn).CornerRadius = UDim.new(0, 6)
+            local cStroke = Instance.new("UIStroke", cBtn)
+            cStroke.Color = WindUI.CurrentTheme.Border
+            cStroke.Thickness = 1
+
+            local box = Instance.new("Frame", cBtn)
+            box.Size = UDim2.new(0, 16, 0, 16)
+            box.Position = UDim2.new(0, 12, 0.5, -8)
+            box.BackgroundColor3 = state and WindUI.CurrentTheme.Accent or WindUI.CurrentTheme.Tertiary
+            Instance.new("UICorner", box).CornerRadius = UDim.new(0, 4)
+            local boxStroke = Instance.new("UIStroke", box)
+            boxStroke.Color = state and WindUI.CurrentTheme.Accent or WindUI.CurrentTheme.Border
+            boxStroke.Thickness = 1.2
+
+            local checkIco = Instance.new("ImageLabel", box)
+            checkIco.Size = UDim2.new(0, 10, 0, 10)
+            checkIco.Position = UDim2.new(0.5, 0, 0.5, 0)
+            checkIco.AnchorPoint = Vector2.new(0.5, 0.5)
+            checkIco.BackgroundTransparency = 1
+            checkIco.ImageColor3 = Color3.fromRGB(255, 255, 255)
+            checkIco.ImageTransparency = state and 0 or 1
+            checkIco.ScaleType = Enum.ScaleType.Fit
+            task.spawn(function() ApplyIcon(checkIco, GetIcon("check")) end)
+
+            local cLbl = Instance.new("TextLabel", cBtn)
+            cLbl.Text = text
+            cLbl.Size = UDim2.new(1, -46, 1, 0)
+            cLbl.Position = UDim2.new(0, 34, 0, 0)
+            cLbl.BackgroundTransparency = 1
+            cLbl.Font = WindUI.CurrentFont
+            cLbl.TextColor3 = WindUI.CurrentTheme.Text
+            cLbl.TextSize = 11
+            cLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+            cBtn.MouseEnter:Connect(function() Tween(cBtn, {Time=0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Tertiary}) end)
+            cBtn.MouseLeave:Connect(function() Tween(cBtn, {Time=0.12}, {BackgroundColor3 = WindUI.CurrentTheme.Secondary}) end)
+            cBtn.MouseButton1Click:Connect(function()
+                state = not state
+                Tween(box, {Time=0.15}, {BackgroundColor3 = state and WindUI.CurrentTheme.Accent or WindUI.CurrentTheme.Tertiary})
+                Tween(boxStroke, {Time=0.15}, {Color = state and WindUI.CurrentTheme.Accent or WindUI.CurrentTheme.Border})
+                Tween(checkIco, {Time=0.12}, {ImageTransparency = state and 0 or 1})
+                pcall(callback, state)
+            end)
+        end
+
+        function Tab:CreateDivider(label)
+            local dWrap = Instance.new("Frame", scroll)
+            dWrap.Size = UDim2.new(0.96, 0, 0, 20)
+            dWrap.BackgroundTransparency = 1
+
+            local line1 = Instance.new("Frame", dWrap)
+            line1.Size = UDim2.new(0.5, -48, 0, 1)
+            line1.Position = UDim2.new(0, 0, 0.5, 0)
+            line1.BackgroundColor3 = WindUI.CurrentTheme.Border
+            line1.BorderSizePixel = 0
+
+            local line2 = Instance.new("Frame", dWrap)
+            line2.Size = UDim2.new(0.5, -48, 0, 1)
+            line2.Position = UDim2.new(0.5, 48, 0.5, 0)
+            line2.BackgroundColor3 = WindUI.CurrentTheme.Border
+            line2.BorderSizePixel = 0
+
+            if label and label ~= "" then
+                local dLbl = Instance.new("TextLabel", dWrap)
+                dLbl.Text = label:upper()
+                dLbl.Size = UDim2.new(0, 90, 1, 0)
+                dLbl.Position = UDim2.new(0.5, -45, 0, 0)
+                dLbl.BackgroundTransparency = 1
+                dLbl.Font = Enum.Font.GothamBold
+                dLbl.TextColor3 = WindUI.CurrentTheme.SubText
+                dLbl.TextSize = 8
+                dLbl.TextXAlignment = Enum.TextXAlignment.Center
+            else
+                local dot = Instance.new("Frame", dWrap)
+                dot.Size = UDim2.new(0, 3, 0, 3)
+                dot.Position = UDim2.new(0.5, -1.5, 0.5, -1.5)
+                dot.BackgroundColor3 = WindUI.CurrentTheme.Accent
+                dot.BackgroundTransparency = 0.5
+                Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+            end
+        end
+
+        function Tab:CreateCode(title, code)
+            local codeFrame = Instance.new("Frame", scroll)
+            codeFrame.Size = UDim2.new(0.95, 0, 0, 0)
+            codeFrame.AutomaticSize = Enum.AutomaticSize.Y
+            codeFrame.BackgroundColor3 = Color3.fromRGB(14, 14, 18)
+            Instance.new("UICorner", codeFrame).CornerRadius = UDim.new(0, 7)
+            local cStroke = Instance.new("UIStroke", codeFrame)
+            cStroke.Color = WindUI.CurrentTheme.Border
+            cStroke.Thickness = 1
+
+            local header = Instance.new("Frame", codeFrame)
+            header.Size = UDim2.new(1, 0, 0, 30)
+            header.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
+            header.BackgroundTransparency = 0.5
+            Instance.new("UICorner", header).CornerRadius = UDim.new(0, 7)
+
+            local headFill = Instance.new("Frame", header)
+            headFill.Size = UDim2.new(1, 0, 0.5, 0)
+            headFill.Position = UDim2.new(0, 0, 0.5, 0)
+            headFill.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
+            headFill.BackgroundTransparency = 0.5
+            headFill.BorderSizePixel = 0
+
+            local codeIco = Instance.new("ImageLabel", header)
+            codeIco.Size = UDim2.new(0, 13, 0, 13)
+            codeIco.Position = UDim2.new(0, 10, 0.5, -6.5)
+            codeIco.BackgroundTransparency = 1
+            codeIco.ImageColor3 = WindUI.CurrentTheme.Accent
+            codeIco.ScaleType = Enum.ScaleType.Fit
+            task.spawn(function() ApplyIcon(codeIco, GetIcon("code")) end)
+
+            local titleLbl = Instance.new("TextLabel", header)
+            titleLbl.Text = title or "Code"
+            titleLbl.Size = UDim2.new(0.6, 0, 1, 0)
+            titleLbl.Position = UDim2.new(0, 28, 0, 0)
+            titleLbl.BackgroundTransparency = 1
+            titleLbl.Font = Enum.Font.GothamBold
+            titleLbl.TextColor3 = WindUI.CurrentTheme.SubText
+            titleLbl.TextSize = 10
+            titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+            local copyBtn = Instance.new("TextButton", header)
+            copyBtn.Size = UDim2.new(0, 52, 0, 20)
+            copyBtn.Position = UDim2.new(1, -60, 0.5, -10)
+            copyBtn.BackgroundColor3 = WindUI.CurrentTheme.Accent
+            copyBtn.BackgroundTransparency = 0.8
+            copyBtn.Text = "Copy"
+            copyBtn.Font = Enum.Font.GothamBold
+            copyBtn.TextColor3 = WindUI.CurrentTheme.Accent
+            copyBtn.TextSize = 9
+            Instance.new("UICorner", copyBtn).CornerRadius = UDim.new(1, 0)
+
+            local codePad = Instance.new("UIPadding", codeFrame)
+            codePad.PaddingTop = UDim.new(0, 30)
+            codePad.PaddingLeft = UDim.new(0, 12)
+            codePad.PaddingRight = UDim.new(0, 12)
+            codePad.PaddingBottom = UDim.new(0, 10)
+
+            local codeLbl = Instance.new("TextLabel", codeFrame)
+            codeLbl.Text = code or ""
+            codeLbl.Size = UDim2.new(1, 0, 0, 0)
+            codeLbl.AutomaticSize = Enum.AutomaticSize.Y
+            codeLbl.BackgroundTransparency = 1
+            codeLbl.Font = Enum.Font.Code
+            codeLbl.TextColor3 = Color3.fromRGB(180, 220, 180)
+            codeLbl.TextSize = 11
+            codeLbl.TextXAlignment = Enum.TextXAlignment.Left
+            codeLbl.TextYAlignment = Enum.TextYAlignment.Top
+            codeLbl.TextWrapped = true
+            codeLbl.RichText = false
+
+            copyBtn.MouseButton1Click:Connect(function()
+                pcall(function() setclipboard(code) end)
+                copyBtn.Text = "✓"
+                copyBtn.TextColor3 = Color3.fromRGB(100, 220, 140)
+                task.delay(1.5, function()
+                    copyBtn.Text = "Copy"
+                    copyBtn.TextColor3 = WindUI.CurrentTheme.Accent
+                end)
+            end)
+        end
+
+        function Tab:CreateMultiSection(sectionName, tabs)
+            -- ── Outer card ────────────────────────────────────────────────────
+            local msFrame = Instance.new("Frame", scroll)
+            msFrame.Size = UDim2.new(0.95, 0, 0, 0)
+            msFrame.AutomaticSize = Enum.AutomaticSize.Y
+            msFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
+            msFrame.BackgroundTransparency = 0
+            Instance.new("UICorner", msFrame).CornerRadius = UDim.new(0, 10)
+            local msStroke = Instance.new("UIStroke", msFrame)
+            msStroke.Color = WindUI.CurrentTheme.Border
+            msStroke.Thickness = 1
+
+            local msLayout = Instance.new("UIListLayout", msFrame)
+            msLayout.Padding = UDim.new(0, 0)
+
+            -- ── Header row ────────────────────────────────────────────────────
+            local msHeader = Instance.new("Frame", msFrame)
+            msHeader.Size = UDim2.new(1, 0, 0, 36)
+            msHeader.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
+            msHeader.BackgroundTransparency = 0
+            Instance.new("UICorner", msHeader).CornerRadius = UDim.new(0, 10)
+            local msHFill = Instance.new("Frame", msHeader)
+            msHFill.Size = UDim2.new(1, 0, 0.5, 0)
+            msHFill.Position = UDim2.new(0, 0, 0.5, 0)
+            msHFill.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
+            msHFill.BorderSizePixel = 0
+
+            local msHBar = Instance.new("Frame", msHeader)
+            msHBar.Size = UDim2.new(0, 3, 0, 16)
+            msHBar.Position = UDim2.new(0, 12, 0.5, -8)
+            msHBar.BackgroundColor3 = WindUI.CurrentTheme.Accent
+            Instance.new("UICorner", msHBar).CornerRadius = UDim.new(1, 0)
+
+            local msHTitle = Instance.new("TextLabel", msHeader)
+            msHTitle.Text = sectionName:upper()
+            msHTitle.Size = UDim2.new(1, -30, 1, 0)
+            msHTitle.Position = UDim2.new(0, 22, 0, 0)
+            msHTitle.BackgroundTransparency = 1
+            msHTitle.Font = Enum.Font.GothamBold
+            msHTitle.TextColor3 = WindUI.CurrentTheme.Text
+            msHTitle.TextSize = 10
+            msHTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+            -- ── Tab bar with sliding indicator ────────────────────────────────
+            local tabBarWrapper = Instance.new("Frame", msFrame)
+            tabBarWrapper.Size = UDim2.new(1, 0, 0, 36)
+            tabBarWrapper.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
+            tabBarWrapper.BackgroundTransparency = 0.5
+            tabBarWrapper.BorderSizePixel = 0
+            tabBarWrapper.ClipsDescendants = true
+
+            local tabBar = Instance.new("Frame", tabBarWrapper)
+            tabBar.Size = UDim2.new(1, -16, 1, -8)
+            tabBar.Position = UDim2.new(0, 8, 0, 4)
+            tabBar.BackgroundColor3 = WindUI.CurrentTheme.Background
+            tabBar.BackgroundTransparency = 0.4
+            Instance.new("UICorner", tabBar).CornerRadius = UDim.new(0, 7)
+
+            -- Indicator layer (sibling of tabBar, tidak ikut layout)
+            local indicatorLayer = Instance.new("Frame", tabBarWrapper)
+            indicatorLayer.Size = UDim2.new(1, -16, 1, -8)
+            indicatorLayer.Position = UDim2.new(0, 8, 0, 4)
+            indicatorLayer.BackgroundTransparency = 1
+            indicatorLayer.ZIndex = 2
+
+            -- Sliding pill indicator
+            local tabIndicator = Instance.new("Frame", indicatorLayer)
+            tabIndicator.Size = UDim2.new(1 / #tabs, -4, 1, -4)
+            tabIndicator.Position = UDim2.new(0, 2, 0, 2)
+            tabIndicator.BackgroundColor3 = WindUI.CurrentTheme.Accent
+            tabIndicator.BackgroundTransparency = 0.78
+            tabIndicator.ZIndex = 2
+            Instance.new("UICorner", tabIndicator).CornerRadius = UDim.new(0, 6)
+            local tabIndStroke = Instance.new("UIStroke", tabIndicator)
+            tabIndStroke.Color = WindUI.CurrentTheme.Accent
+            tabIndStroke.Thickness = 1
+            tabIndStroke.Transparency = 0.5
+
+            -- Button layout inside tabBar (clean, no indicator interference)
+            local tabBtnLayout = Instance.new("UIListLayout", tabBar)
+            tabBtnLayout.FillDirection = Enum.FillDirection.Horizontal
+            tabBtnLayout.Padding = UDim.new(0, 0)
+
+            -- Separator
+            local msSep = Instance.new("Frame", msFrame)
+            msSep.Size = UDim2.new(1, 0, 0, 1)
+            msSep.BackgroundColor3 = WindUI.CurrentTheme.Border
+            msSep.BorderSizePixel = 0
+
+            -- ── Page container ─────────────────────────────────────────────────
+            local pageContainer = Instance.new("Frame", msFrame)
+            pageContainer.Size = UDim2.new(1, 0, 0, 0)
+            pageContainer.AutomaticSize = Enum.AutomaticSize.Y
+            pageContainer.BackgroundTransparency = 1
+            local pagePad = Instance.new("UIPadding", pageContainer)
+            pagePad.PaddingTop = UDim.new(0, 8)
+            pagePad.PaddingBottom = UDim.new(0, 8)
+            pagePad.PaddingLeft = UDim.new(0, 8)
+            pagePad.PaddingRight = UDim.new(0, 8)
+
+            local activeTabBtn = nil
+            local activePageFrame = nil
+            local tabObjects = {}
+
+            for i, tabDef in ipairs(tabs) do
+                local tabName = tabDef.Name or ("Tab " .. i)
+
+                -- Transparent button sits on top of sliding indicator
+                local tBtn = Instance.new("TextButton", tabBar)
+                tBtn.Size = UDim2.new(1 / #tabs, 0, 1, 0)
+                tBtn.BackgroundTransparency = 1
+                tBtn.Text = ""
+                tBtn.ZIndex = 5
+
+                local tBtnLbl = Instance.new("TextLabel", tBtn)
+                tBtnLbl.Text = tabName
+                tBtnLbl.Size = UDim2.new(1, 0, 1, 0)
+                tBtnLbl.BackgroundTransparency = 1
+                tBtnLbl.Font = i == 1 and Enum.Font.GothamBold or Enum.Font.GothamMedium
+                tBtnLbl.TextColor3 = i == 1 and WindUI.CurrentTheme.Accent or WindUI.CurrentTheme.SubText
+                tBtnLbl.TextSize = 10
+                tBtnLbl.ZIndex = 6
+
+                local pageScroll = Instance.new("ScrollingFrame", pageContainer)
+                pageScroll.Size = UDim2.new(1, 0, 0, 0)
+                pageScroll.AutomaticSize = Enum.AutomaticSize.Y
+                pageScroll.BackgroundTransparency = 1
+                pageScroll.ScrollBarThickness = 0
+                pageScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+                pageScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+                pageScroll.Visible = i == 1
+
+                local pageLayout = Instance.new("UIListLayout", pageScroll)
+                pageLayout.Padding = UDim.new(0, 6)
+                pageLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+                local pageTab = {Scroll = pageScroll}
+                local pScroll = pageScroll
+
+                pageTab.CreateButton = function(self, text, callback, iconName)
+                    local b = Instance.new("TextButton", pScroll)
+                    b.Size = UDim2.new(0.96, 0, 0, 34)
+                    b.BackgroundColor3 = WindUI.CurrentTheme.Secondary
+                    b.Text = ""
+                    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+                    local bStroke = Instance.new("UIStroke", b)
+                    bStroke.Color = WindUI.CurrentTheme.Border
+                    bStroke.Thickness = 1
+                    local iconImg = Instance.new("ImageLabel", b)
+                    iconImg.Size = UDim2.new(0, 13, 0, 13)
+                    iconImg.Position = UDim2.new(0, 12, 0.5, -6.5)
+                    iconImg.BackgroundTransparency = 1
+                    iconImg.ImageColor3 = WindUI.CurrentTheme.Accent
+                    iconImg.ScaleType = Enum.ScaleType.Fit
+                    iconImg.Visible = false
+                    local textOffset = 12
+                    if iconName then
+                        task.spawn(function()
+                            local iconData = GetIcon(iconName)
+                            if iconData then ApplyIcon(iconImg, iconData); iconImg.Visible = true end
+                        end)
+                        textOffset = 30
+                    end
+                    local bLbl = Instance.new("TextLabel", b)
+                    bLbl.Text = text
+                    bLbl.Size = UDim2.new(1, -(textOffset + 28), 1, 0)
+                    bLbl.Position = UDim2.new(0, textOffset, 0, 0)
+                    bLbl.BackgroundTransparency = 1
+                    bLbl.Font = WindUI.CurrentFont
+                    bLbl.TextColor3 = WindUI.CurrentTheme.Text
+                    bLbl.TextSize = 11
+                    bLbl.TextXAlignment = Enum.TextXAlignment.Left
+                    local arrImg = Instance.new("ImageLabel", b)
+                    arrImg.Size = UDim2.new(0, 11, 0, 11)
+                    arrImg.Position = UDim2.new(1, -22, 0.5, -5.5)
+                    arrImg.BackgroundTransparency = 1
+                    arrImg.ImageColor3 = WindUI.CurrentTheme.Accent
+                    arrImg.ImageTransparency = 0.6
+                    arrImg.ScaleType = Enum.ScaleType.Fit
+                    task.spawn(function() ApplyIcon(arrImg, GetIcon("chevron-right")) end)
+                    b.MouseEnter:Connect(function() Tween(b,{Time=0.12},{BackgroundColor3=WindUI.CurrentTheme.Tertiary}); Tween(bStroke,{Time=0.12},{Color=WindUI.CurrentTheme.Accent,Transparency=0.5}); Tween(arrImg,{Time=0.12},{ImageTransparency=0}) end)
+                    b.MouseLeave:Connect(function() Tween(b,{Time=0.12},{BackgroundColor3=WindUI.CurrentTheme.Secondary}); Tween(bStroke,{Time=0.12},{Color=WindUI.CurrentTheme.Border,Transparency=0}); Tween(arrImg,{Time=0.12},{ImageTransparency=0.6}) end)
+                    b.MouseButton1Click:Connect(function() Tween(b,{Time=0.07},{BackgroundColor3=WindUI.CurrentTheme.AccentDark}); task.delay(0.1,function() Tween(b,{Time=0.12},{BackgroundColor3=WindUI.CurrentTheme.Secondary}) end); pcall(callback) end)
+                end
+
+                pageTab.CreateToggle = function(self, text, default, callback)
+                    local state = default
+                    local tBtn = Instance.new("TextButton", pScroll)
+                    tBtn.Size = UDim2.new(0.96, 0, 0, 36)
+                    tBtn.BackgroundColor3 = WindUI.CurrentTheme.Secondary
+                    tBtn.Text = ""
+                    Instance.new("UICorner", tBtn).CornerRadius = UDim.new(0, 6)
+                    local tStroke = Instance.new("UIStroke", tBtn)
+                    tStroke.Color = WindUI.CurrentTheme.Border
+                    tStroke.Thickness = 1
+                    local lbl = Instance.new("TextLabel", tBtn)
+                    lbl.Text = text
+                    lbl.Size = UDim2.new(1, -64, 1, 0)
+                    lbl.Position = UDim2.new(0, 12, 0, 0)
+                    lbl.BackgroundTransparency = 1
+                    lbl.Font = WindUI.CurrentFont
+                    lbl.TextColor3 = WindUI.CurrentTheme.Text
+                    lbl.TextSize = 11
+                    lbl.TextXAlignment = Enum.TextXAlignment.Left
+                    local switch = Instance.new("Frame", tBtn)
+                    switch.Size = UDim2.new(0, 34, 0, 17)
+                    switch.Position = UDim2.new(1, -46, 0.5, -8.5)
+                    switch.BackgroundColor3 = state and WindUI.CurrentTheme.Accent or Color3.fromRGB(36, 26, 26)
+                    Instance.new("UICorner", switch).CornerRadius = UDim.new(1, 0)
+                    local knob = Instance.new("Frame", switch)
+                    knob.Size = UDim2.new(0, 12, 0, 12)
+                    knob.Position = state and UDim2.new(1,-14,0.5,-6) or UDim2.new(0,2,0.5,-6)
+                    knob.BackgroundColor3 = Color3.fromRGB(255,255,255)
+                    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+                    tBtn.MouseEnter:Connect(function() Tween(tBtn,{Time=0.12},{BackgroundColor3=WindUI.CurrentTheme.Tertiary}) end)
+                    tBtn.MouseLeave:Connect(function() Tween(tBtn,{Time=0.12},{BackgroundColor3=WindUI.CurrentTheme.Secondary}) end)
+                    tBtn.MouseButton1Click:Connect(function()
+                        state = not state
+                        Tween(switch,{Time=0.2,Style=Enum.EasingStyle.Quart},{BackgroundColor3=state and WindUI.CurrentTheme.Accent or Color3.fromRGB(36,26,26)})
+                        Tween(knob,{Time=0.2,Style=Enum.EasingStyle.Back},{Position=state and UDim2.new(1,-14,0.5,-6) or UDim2.new(0,2,0.5,-6)})
+                        pcall(callback, state)
+                    end)
+                end
+
+                pageTab.CreateSlider = function(self, text, min, max, default, callback)
+                    local sFrame = Instance.new("Frame", pScroll)
+                    sFrame.Size = UDim2.new(0.96, 0, 0, 50)
+                    sFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
+                    Instance.new("UICorner", sFrame).CornerRadius = UDim.new(0, 6)
+                    local sfStroke = Instance.new("UIStroke", sFrame)
+                    sfStroke.Color = WindUI.CurrentTheme.Border
+                    sfStroke.Thickness = 1
+                    local lbl = Instance.new("TextLabel", sFrame)
+                    lbl.Text = text
+                    lbl.Size = UDim2.new(0.65, 0, 0, 20)
+                    lbl.Position = UDim2.new(0, 12, 0, 6)
+                    lbl.BackgroundTransparency = 1
+                    lbl.TextColor3 = WindUI.CurrentTheme.Text
+                    lbl.Font = WindUI.CurrentFont
+                    lbl.TextSize = 11
+                    lbl.TextXAlignment = Enum.TextXAlignment.Left
+                    local valLbl = Instance.new("TextLabel", sFrame)
+                    valLbl.Text = tostring(default)
+                    valLbl.Size = UDim2.new(0.35, -12, 0, 20)
+                    valLbl.Position = UDim2.new(0.65, 0, 0, 6)
+                    valLbl.BackgroundTransparency = 1
+                    valLbl.TextColor3 = WindUI.CurrentTheme.Accent
+                    valLbl.Font = Enum.Font.GothamBold
+                    valLbl.TextSize = 11
+                    valLbl.TextXAlignment = Enum.TextXAlignment.Right
+                    local track = Instance.new("Frame", sFrame)
+                    track.Size = UDim2.new(1, -24, 0, 4)
+                    track.Position = UDim2.new(0, 12, 0, 34)
+                    track.BackgroundColor3 = Color3.fromRGB(30,22,22)
+                    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+                    local fill = Instance.new("Frame", track)
+                    fill.Size = UDim2.new((default-min)/(max-min), 0, 1, 0)
+                    fill.BackgroundColor3 = WindUI.CurrentTheme.Accent
+                    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+                    local knob = Instance.new("TextButton", track)
+                    knob.Size = UDim2.new(0, 10, 0, 16)
+                    knob.AnchorPoint = Vector2.new(0.5, 0.5)
+                    knob.Position = UDim2.new((default-min)/(max-min), 0, 0.5, 0)
+                    knob.BackgroundColor3 = Color3.fromRGB(255,255,255)
+                    knob.Text = ""
+                    Instance.new("UICorner", knob).CornerRadius = UDim.new(0, 3)
+                    local dragging = false
+                    local function UpdateSlider(input)
+                        local pos = math.clamp((input.Position.X - track.AbsolutePosition.X)/track.AbsoluteSize.X, 0, 1)
+                        local val = math.floor(min + (max-min)*pos)
+                        fill.Size = UDim2.new(pos, 0, 1, 0)
+                        knob.Position = UDim2.new(pos, 0, 0.5, 0)
+                        valLbl.Text = tostring(val)
+                        pcall(callback, val)
+                    end
+                    knob.InputBegan:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dragging=true end end)
+                    UserInputService.InputChanged:Connect(function(input) if dragging and (input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch) then UpdateSlider(input) end end)
+                    UserInputService.InputEnded:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dragging=false end end)
+                end
+
+                pageTab.CreateDropdown = function(self, text, options, callback)
+                    -- reuse Tab:CreateDropdown but route to pScroll
+                    local fakeTab = {Scroll = pScroll}
+                    Tab.CreateDropdown(fakeTab, text, options, callback)
+                end
+
+                pageTab.CreateMultiDropdown = function(self, text, options, callback)
+                    -- reuse Tab:CreateMultiDropdown but route to pScroll
+                    local fakeTab = {Scroll = pScroll}
+                    Tab.CreateMultiDropdown(fakeTab, text, options, callback)
+                end
+
+                pageTab.CreateInput = function(self, text, placeholder, callback)
+                    local iFrame = Instance.new("Frame", pScroll)
+                    iFrame.Size = UDim2.new(0.96, 0, 0, 48)
+                    iFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
+                    Instance.new("UICorner", iFrame).CornerRadius = UDim.new(0, 8)
+                    local ifStroke = Instance.new("UIStroke", iFrame)
+                    ifStroke.Color = WindUI.CurrentTheme.Border
+                    ifStroke.Thickness = 1
+                    local bar = Instance.new("Frame", iFrame)
+                    bar.Size = UDim2.new(0, 3, 0, 26)
+                    bar.Position = UDim2.new(0, 0, 0.5, -13)
+                    bar.BackgroundColor3 = WindUI.CurrentTheme.Accent
+                    bar.BackgroundTransparency = 1
+                    Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+                    local iLbl = Instance.new("TextLabel", iFrame)
+                    iLbl.Text = text
+                    iLbl.Size = UDim2.new(1, -20, 0, 18)
+                    iLbl.Position = UDim2.new(0, 14, 0, 6)
+                    iLbl.BackgroundTransparency = 1
+                    iLbl.Font = WindUI.CurrentFont
+                    iLbl.TextColor3 = WindUI.CurrentTheme.SubText
+                    iLbl.TextSize = 10
+                    iLbl.TextXAlignment = Enum.TextXAlignment.Left
+                    local inputBox = Instance.new("TextBox", iFrame)
+                    inputBox.Size = UDim2.new(1, -28, 0, 22)
+                    inputBox.Position = UDim2.new(0, 14, 0, 24)
+                    inputBox.BackgroundTransparency = 1
+                    inputBox.Font = WindUI.CurrentFont
+                    inputBox.Text = ""
+                    inputBox.PlaceholderText = placeholder or "Type here..."
+                    inputBox.TextColor3 = WindUI.CurrentTheme.Text
+                    inputBox.PlaceholderColor3 = WindUI.CurrentTheme.SubText
+                    inputBox.TextSize = 12
+                    inputBox.TextXAlignment = Enum.TextXAlignment.Left
+                    inputBox.ClearTextOnFocus = false
+                    inputBox:GetPropertyChangedSignal("Text"):Connect(function() pcall(callback, inputBox.Text) end)
+                    inputBox.Focused:Connect(function() Tween(ifStroke,{Time=0.2},{Color=WindUI.CurrentTheme.Accent,Transparency=0.4}); Tween(bar,{Time=0.2},{BackgroundTransparency=0}) end)
+                    inputBox.FocusLost:Connect(function() Tween(ifStroke,{Time=0.2},{Color=WindUI.CurrentTheme.Border,Transparency=0}); Tween(bar,{Time=0.2},{BackgroundTransparency=1}) end)
+                end
+
+                pageTab.CreateKeybind = function(self, text, default, callback)
+                    local currentKey = default or Enum.KeyCode.Unknown
+                    local binding = false
+                    local kFrame = Instance.new("TextButton", pScroll)
+                    kFrame.Size = UDim2.new(0.96, 0, 0, 36)
+                    kFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
+                    kFrame.Text = ""
+                    Instance.new("UICorner", kFrame).CornerRadius = UDim.new(0, 6)
+                    local kStroke = Instance.new("UIStroke", kFrame)
+                    kStroke.Color = WindUI.CurrentTheme.Border
+                    kStroke.Thickness = 1
+                    local kIco = Instance.new("ImageLabel", kFrame)
+                    kIco.Size = UDim2.new(0, 13, 0, 13)
+                    kIco.Position = UDim2.new(0, 12, 0.5, -6.5)
+                    kIco.BackgroundTransparency = 1
+                    kIco.ImageColor3 = WindUI.CurrentTheme.Accent
+                    kIco.ScaleType = Enum.ScaleType.Fit
+                    task.spawn(function() ApplyIcon(kIco, GetIcon("keyboard")) end)
+                    local kLbl = Instance.new("TextLabel", kFrame)
+                    kLbl.Text = text
+                    kLbl.Size = UDim2.new(0.6, 0, 1, 0)
+                    kLbl.Position = UDim2.new(0, 30, 0, 0)
+                    kLbl.BackgroundTransparency = 1
+                    kLbl.Font = WindUI.CurrentFont
+                    kLbl.TextColor3 = WindUI.CurrentTheme.Text
+                    kLbl.TextSize = 11
+                    kLbl.TextXAlignment = Enum.TextXAlignment.Left
+                    local kBadge = Instance.new("Frame", kFrame)
+                    kBadge.Size = UDim2.new(0, 68, 0, 20)
+                    kBadge.Position = UDim2.new(1, -78, 0.5, -10)
+                    kBadge.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
+                    Instance.new("UICorner", kBadge).CornerRadius = UDim.new(0, 5)
+                    local kbStroke = Instance.new("UIStroke", kBadge)
+                    kbStroke.Color = WindUI.CurrentTheme.Accent
+                    kbStroke.Thickness = 1
+                    kbStroke.Transparency = 0.5
+                    local kValLbl = Instance.new("TextLabel", kBadge)
+                    kValLbl.Size = UDim2.new(1, 0, 1, 0)
+                    kValLbl.BackgroundTransparency = 1
+                    kValLbl.Font = Enum.Font.GothamBold
+                    kValLbl.TextColor3 = WindUI.CurrentTheme.Accent
+                    kValLbl.TextSize = 9
+                    kValLbl.Text = tostring(currentKey):gsub("Enum.KeyCode.", "")
+                    kFrame.MouseEnter:Connect(function() Tween(kFrame,{Time=0.12},{BackgroundColor3=WindUI.CurrentTheme.Tertiary}) end)
+                    kFrame.MouseLeave:Connect(function() Tween(kFrame,{Time=0.12},{BackgroundColor3=WindUI.CurrentTheme.Secondary}) end)
+                    kFrame.MouseButton1Click:Connect(function()
+                        if binding then return end
+                        binding = true
+                        kValLbl.Text = "· · ·"
+                        kValLbl.TextColor3 = WindUI.CurrentTheme.SubText
+                        Tween(kbStroke,{Time=0.15},{Transparency=0})
+                        local conn
+                        conn = UserInputService.InputBegan:Connect(function(input, gpe)
+                            if gpe then return end
+                            if input.UserInputType == Enum.UserInputType.Keyboard then
+                                currentKey = input.KeyCode
+                                kValLbl.Text = tostring(currentKey):gsub("Enum.KeyCode.","")
+                                kValLbl.TextColor3 = WindUI.CurrentTheme.Accent
+                                Tween(kbStroke,{Time=0.15},{Transparency=0.5})
+                                binding = false
+                                conn:Disconnect()
+                                pcall(callback, currentKey)
+                            end
+                        end)
+                    end)
+                end
+
+                pageTab.CreateLabel = function(self, title, desc)
+                    local lFrame = Instance.new("Frame", pScroll)
+                    local hasDesc = desc and desc ~= ""
+                    lFrame.Size = UDim2.new(0.96, 0, 0, hasDesc and 46 or 30)
+                    lFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
+                    Instance.new("UICorner", lFrame).CornerRadius = UDim.new(0, 6)
+                    local lfStroke = Instance.new("UIStroke", lFrame)
+                    lfStroke.Color = WindUI.CurrentTheme.Border
+                    lfStroke.Thickness = 1
+                    local bar = Instance.new("Frame", lFrame)
+                    bar.Size = UDim2.new(0, 2, 0, hasDesc and 26 or 14)
+                    bar.Position = UDim2.new(0, 0, 0.5, hasDesc and -13 or -7)
+                    bar.BackgroundColor3 = WindUI.CurrentTheme.Accent
+                    bar.BackgroundTransparency = 0.4
+                    Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+                    local tLbl = Instance.new("TextLabel", lFrame)
+                    tLbl.Text = title
+                    tLbl.Size = UDim2.new(1, -20, 0, 16)
+                    tLbl.Position = UDim2.new(0, 10, 0, 7)
+                    tLbl.BackgroundTransparency = 1
+                    tLbl.Font = Enum.Font.GothamBold
+                    tLbl.TextColor3 = WindUI.CurrentTheme.Text
+                    tLbl.TextSize = 11
+                    tLbl.TextXAlignment = Enum.TextXAlignment.Left
+                    if hasDesc then
+                        local dLbl = Instance.new("TextLabel", lFrame)
+                        dLbl.Text = desc
+                        dLbl.Size = UDim2.new(1, -20, 0, 14)
+                        dLbl.Position = UDim2.new(0, 10, 0, 25)
+                        dLbl.BackgroundTransparency = 1
+                        dLbl.Font = Enum.Font.GothamMedium
+                        dLbl.TextColor3 = WindUI.CurrentTheme.SubText
+                        dLbl.TextSize = 9
+                        dLbl.TextXAlignment = Enum.TextXAlignment.Left
+                        dLbl.TextWrapped = true
+                    end
+                end
+
+                pageTab.CreateCheckbox = function(self, text, default, callback)
+                    local state = default or false
+                    local cBtn = Instance.new("TextButton", pScroll)
+                    cBtn.Size = UDim2.new(0.96, 0, 0, 34)
+                    cBtn.BackgroundColor3 = WindUI.CurrentTheme.Secondary
+                    cBtn.Text = ""
+                    Instance.new("UICorner", cBtn).CornerRadius = UDim.new(0, 6)
+                    local cStroke = Instance.new("UIStroke", cBtn)
+                    cStroke.Color = WindUI.CurrentTheme.Border
+                    cStroke.Thickness = 1
+                    local box = Instance.new("Frame", cBtn)
+                    box.Size = UDim2.new(0, 16, 0, 16)
+                    box.Position = UDim2.new(0, 12, 0.5, -8)
+                    box.BackgroundColor3 = state and WindUI.CurrentTheme.Accent or WindUI.CurrentTheme.Tertiary
+                    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 4)
+                    local boxStroke = Instance.new("UIStroke", box)
+                    boxStroke.Color = state and WindUI.CurrentTheme.Accent or WindUI.CurrentTheme.Border
+                    boxStroke.Thickness = 1.2
+                    local checkIco = Instance.new("ImageLabel", box)
+                    checkIco.Size = UDim2.new(0, 10, 0, 10)
+                    checkIco.Position = UDim2.new(0.5, 0, 0.5, 0)
+                    checkIco.AnchorPoint = Vector2.new(0.5, 0.5)
+                    checkIco.BackgroundTransparency = 1
+                    checkIco.ImageColor3 = Color3.fromRGB(255,255,255)
+                    checkIco.ImageTransparency = state and 0 or 1
+                    checkIco.ScaleType = Enum.ScaleType.Fit
+                    task.spawn(function() ApplyIcon(checkIco, GetIcon("check")) end)
+                    local cLbl = Instance.new("TextLabel", cBtn)
+                    cLbl.Text = text
+                    cLbl.Size = UDim2.new(1, -46, 1, 0)
+                    cLbl.Position = UDim2.new(0, 34, 0, 0)
+                    cLbl.BackgroundTransparency = 1
+                    cLbl.Font = WindUI.CurrentFont
+                    cLbl.TextColor3 = WindUI.CurrentTheme.Text
+                    cLbl.TextSize = 11
+                    cLbl.TextXAlignment = Enum.TextXAlignment.Left
+                    cBtn.MouseEnter:Connect(function() Tween(cBtn,{Time=0.12},{BackgroundColor3=WindUI.CurrentTheme.Tertiary}) end)
+                    cBtn.MouseLeave:Connect(function() Tween(cBtn,{Time=0.12},{BackgroundColor3=WindUI.CurrentTheme.Secondary}) end)
+                    cBtn.MouseButton1Click:Connect(function()
+                        state = not state
+                        Tween(box,{Time=0.15},{BackgroundColor3=state and WindUI.CurrentTheme.Accent or WindUI.CurrentTheme.Tertiary})
+                        Tween(boxStroke,{Time=0.15},{Color=state and WindUI.CurrentTheme.Accent or WindUI.CurrentTheme.Border})
+                        Tween(checkIco,{Time=0.12},{ImageTransparency=state and 0 or 1})
+                        pcall(callback, state)
+                    end)
+                end
+
+                pageTab.CreateDivider = function(self, label)
+                    local dWrap = Instance.new("Frame", pScroll)
+                    dWrap.Size = UDim2.new(0.96, 0, 0, 20)
+                    dWrap.BackgroundTransparency = 1
+                    local line1 = Instance.new("Frame", dWrap)
+                    line1.Size = UDim2.new(0.5, -48, 0, 1)
+                    line1.Position = UDim2.new(0, 0, 0.5, 0)
+                    line1.BackgroundColor3 = WindUI.CurrentTheme.Border
+                    line1.BorderSizePixel = 0
+                    local line2 = Instance.new("Frame", dWrap)
+                    line2.Size = UDim2.new(0.5, -48, 0, 1)
+                    line2.Position = UDim2.new(0.5, 48, 0.5, 0)
+                    line2.BackgroundColor3 = WindUI.CurrentTheme.Border
+                    line2.BorderSizePixel = 0
+                    if label and label ~= "" then
+                        local dLbl = Instance.new("TextLabel", dWrap)
+                        dLbl.Text = label:upper()
+                        dLbl.Size = UDim2.new(0, 90, 1, 0)
+                        dLbl.Position = UDim2.new(0.5, -45, 0, 0)
+                        dLbl.BackgroundTransparency = 1
+                        dLbl.Font = Enum.Font.GothamBold
+                        dLbl.TextColor3 = WindUI.CurrentTheme.SubText
+                        dLbl.TextSize = 8
+                        dLbl.TextXAlignment = Enum.TextXAlignment.Center
+                    else
+                        local dot = Instance.new("Frame", dWrap)
+                        dot.Size = UDim2.new(0, 3, 0, 3)
+                        dot.Position = UDim2.new(0.5, -1.5, 0.5, -1.5)
+                        dot.BackgroundColor3 = WindUI.CurrentTheme.Accent
+                        dot.BackgroundTransparency = 0.5
+                        Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+                    end
+                end
+
+                pageTab.CreateParagraph = function(self, title, body)
+                    local pFrame = Instance.new("Frame", pScroll)
+                    pFrame.Size = UDim2.new(0.95, 0, 0, 0)
+                    pFrame.AutomaticSize = Enum.AutomaticSize.Y
+                    pFrame.BackgroundColor3 = WindUI.CurrentTheme.Secondary
+                    pFrame.BackgroundTransparency = 0.3
+                    Instance.new("UICorner", pFrame).CornerRadius = UDim.new(0, 8)
+                    local pStroke = Instance.new("UIStroke", pFrame)
+                    pStroke.Color = WindUI.CurrentTheme.Border
+                    pStroke.Thickness = 1
+                    local pPad = Instance.new("UIPadding", pFrame)
+                    pPad.PaddingTop = UDim.new(0, 10)
+                    pPad.PaddingBottom = UDim.new(0, 10)
+                    pPad.PaddingLeft = UDim.new(0, 7)
+                    pPad.PaddingRight = UDim.new(0, 7)
+                    local pLayout = Instance.new("UIListLayout", pFrame)
+                    pLayout.Padding = UDim.new(0, 4)
+                    local bar = Instance.new("Frame", pFrame)
+                    bar.Size = UDim2.new(0, 3, 0, 14)
+                    bar.BackgroundColor3 = WindUI.CurrentTheme.Accent
+                    bar.BackgroundTransparency = 0.3
+                    bar.Position = UDim2.new(0, -14, 0, 10)
+                    Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+                    local tLbl = Instance.new("TextLabel", pFrame)
+                    tLbl.Text = title
+                    tLbl.Size = UDim2.new(1, 0, 0, 0)
+                    tLbl.AutomaticSize = Enum.AutomaticSize.Y
+                    tLbl.BackgroundTransparency = 1
+                    tLbl.Font = Enum.Font.GothamBold
+                    tLbl.TextColor3 = WindUI.CurrentTheme.Text
+                    tLbl.TextSize = 12
+                    tLbl.TextXAlignment = Enum.TextXAlignment.Left
+                    tLbl.TextWrapped = true
+                    local bLbl = Instance.new("TextLabel", pFrame)
+                    bLbl.Text = body
+                    bLbl.Size = UDim2.new(1, 0, 0, 0)
+                    bLbl.AutomaticSize = Enum.AutomaticSize.Y
+                    bLbl.BackgroundTransparency = 1
+                    bLbl.Font = Enum.Font.GothamMedium
+                    bLbl.TextColor3 = WindUI.CurrentTheme.SubText
+                    bLbl.TextSize = 11
+                    bLbl.TextXAlignment = Enum.TextXAlignment.Left
+                    bLbl.TextWrapped = true
+                end
+
+                table.insert(tabObjects, {btn=tBtn, lbl=tBtnLbl, page=pageScroll, index=i})
+
+                if i == 1 then activeTabBtn = tBtn; activePageFrame = pageScroll end
+
+                tBtn.MouseButton1Click:Connect(function()
+                    -- Find current active index
+                    local prevIndex = 1
+                    local prevPage = nil
+                    for _, obj in ipairs(tabObjects) do
+                        if obj.page.Visible then
+                            prevIndex = obj.index
+                            prevPage = obj.page
+                            break
+                        end
+                    end
+                    if prevIndex == i then return end
+
+                    -- Slide indicator
+                    local targetX = (i - 1) / #tabs
+                    Tween(tabIndicator, {Time=0.25, Style=Enum.EasingStyle.Quart, Dir=Enum.EasingDirection.Out},
+                        {Position=UDim2.new(targetX, 2, 0, 2)})
+
+                    -- Update labels
+                    for _, obj in ipairs(tabObjects) do
+                        local isActive = obj.index == i
+                        Tween(obj.lbl, {Time=0.2}, {
+                            TextColor3 = isActive and WindUI.CurrentTheme.Accent or WindUI.CurrentTheme.SubText
+                        })
+                        obj.lbl.Font = isActive and Enum.Font.GothamBold or Enum.Font.GothamMedium
+                    end
+
+                    -- Animate msFrame (outer card) only: quick pulse scale
+                    local origPos = msFrame.Position
+                    Tween(msFrame, {Time=0.1, Style=Enum.EasingStyle.Quart, Dir=Enum.EasingDirection.Out},
+                        {BackgroundTransparency=0.15})
+                    task.delay(0.1, function()
+                        Tween(msFrame, {Time=0.15, Style=Enum.EasingStyle.Quart, Dir=Enum.EasingDirection.Out},
+                            {BackgroundTransparency=0})
+                    end)
+
+                    -- Switch page instantly (no content animation)
+                    if prevPage then
+                        prevPage.Visible = false
+                    end
+                    pageScroll.Visible = true
+                end)
+
+                if tabDef.Build then
+                    tabDef.Build(pageTab)
+                end
+            end
+
+            return tabObjects
+        end
+
+        function Tab:CreateTabDropdown(name, subNames, iconName)
+            local resolvedSubIcon = iconName or "layers"
+            local subExpanded = false
+            local SUBBTN_H = 32
+            local subH = #subNames * SUBBTN_H + (#subNames - 1) * 3
+
+            -- ── Wrapper in sidebar ──────────────────────────────────────────
+            local wrapFrame = Instance.new("Frame", tabContainer)
+            wrapFrame.Size = UDim2.new(1, 0, 0, 34)
+            wrapFrame.BackgroundTransparency = 1
+            wrapFrame.ClipsDescendants = false
+            Instance.new("UICorner", wrapFrame).CornerRadius = UDim.new(0, 7)
+
+            -- Group header button
+            local dropBtn = Instance.new("TextButton", wrapFrame)
+            dropBtn.Size = UDim2.new(1, 0, 0, 34)
+            dropBtn.BackgroundColor3 = WindUI.CurrentTheme.Accent
+            dropBtn.BackgroundTransparency = 0.94
+            dropBtn.Text = ""
+            Instance.new("UICorner", dropBtn).CornerRadius = UDim.new(0, 7)
+            local dropBtnStroke = Instance.new("UIStroke", dropBtn)
+            dropBtnStroke.Color = WindUI.CurrentTheme.Accent
+            dropBtnStroke.Thickness = 1
+            dropBtnStroke.Transparency = 0.7
+
+            local dropIcon = Instance.new("ImageLabel", dropBtn)
+            dropIcon.Size = UDim2.new(0, 13, 0, 13)
+            dropIcon.Position = UDim2.new(0, 14, 0.5, -6.5)
+            dropIcon.BackgroundTransparency = 1
+            dropIcon.ImageColor3 = WindUI.CurrentTheme.SubText
+            dropIcon.ScaleType = Enum.ScaleType.Fit
+            task.spawn(function() ApplyIcon(dropIcon, GetIcon(resolvedSubIcon)) end)
+
+            local dropLbl = Instance.new("TextLabel", dropBtn)
+            dropLbl.Text = name
+            dropLbl.Size = UDim2.new(1, -50, 1, 0)
+            dropLbl.Position = UDim2.new(0, 32, 0, 0)
+            dropLbl.BackgroundTransparency = 1
+            dropLbl.Font = WindUI.CurrentFont
+            dropLbl.TextColor3 = WindUI.CurrentTheme.SubText
+            dropLbl.TextSize = 11
+            dropLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+            local dropArrow = Instance.new("ImageLabel", dropBtn)
+            dropArrow.Size = UDim2.new(0, 10, 0, 10)
+            dropArrow.Position = UDim2.new(1, -18, 0.5, -5)
+            dropArrow.BackgroundTransparency = 1
+            dropArrow.ImageColor3 = WindUI.CurrentTheme.SubText
+            dropArrow.ImageTransparency = 0.3
+            dropArrow.ScaleType = Enum.ScaleType.Fit
+            task.spawn(function() ApplyIcon(dropArrow, GetIcon("chevron-down")) end)
+
+            -- Sub-tab list container (slides open)
+            local subContainer = Instance.new("Frame", wrapFrame)
+            subContainer.Size = UDim2.new(1, -10, 0, 0)
+            subContainer.Position = UDim2.new(0, 10, 0, 36)
+            subContainer.BackgroundTransparency = 1
+            subContainer.ClipsDescendants = true
+            local subLayout = Instance.new("UIListLayout", subContainer)
+            subLayout.Padding = UDim.new(0, 3)
+
+            local subTabs = {}
+            for si, subName in ipairs(subNames) do
+                local subBtn = Instance.new("TextButton", subContainer)
+                subBtn.Size = UDim2.new(1, 0, 0, SUBBTN_H)
+                subBtn.BackgroundColor3 = WindUI.CurrentTheme.Accent
+                subBtn.BackgroundTransparency = 1
+                subBtn.Text = ""
+                Instance.new("UICorner", subBtn).CornerRadius = UDim.new(0, 8)
+                subBtn.ZIndex = 2
+
+                local subLbl = Instance.new("TextLabel", subBtn)
+                subLbl.Text = subName
+                subLbl.Size = UDim2.new(1, -24, 1, 0)
+                subLbl.Position = UDim2.new(0, 18, 0, 0)
+                subLbl.BackgroundTransparency = 1
+                subLbl.Font = WindUI.CurrentFont
+                subLbl.TextColor3 = WindUI.CurrentTheme.SubText
+                subLbl.TextSize = 10
+                subLbl.TextXAlignment = Enum.TextXAlignment.Left
+                subLbl.ZIndex = 3
+
+                -- ── Sub-tab content area ────────────────────────────────────
+                local subContainer_tab = Instance.new("CanvasGroup", contentArea)
+                subContainer_tab.Size = UDim2.new(1, 0, 1, 0)
+                subContainer_tab.BackgroundTransparency = 1
+                subContainer_tab.Visible = false
+
+                local subScroll = Instance.new("ScrollingFrame", subContainer_tab)
+                subScroll.Size = UDim2.new(1, 0, 1, 0)
+                subScroll.BackgroundTransparency = 1
+                subScroll.ScrollBarThickness = 2
+                subScroll.ScrollBarImageColor3 = WindUI.CurrentTheme.Accent
+                subScroll.ScrollBarImageTransparency = 0.7
+                subScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+                subScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+                local subScrollLayout = Instance.new("UIListLayout", subScroll)
+                subScrollLayout.Padding = UDim.new(0, 8)
+                subScrollLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+                local subScrollPad = Instance.new("UIPadding", subScroll)
+                subScrollPad.PaddingTop = UDim.new(0, 8)
+                subScrollPad.PaddingBottom = UDim.new(0, 8)
+
+                local SubTab = { Container = subContainer_tab, Scroll = subScroll, Button = subBtn }
+
+                local function ActivateSub()
+                    if Window.CurrentTab == SubTab then return end
+                    -- Slide out current tab
+                    local prev = Window.CurrentTab
+                    if prev and prev.Container then
+                        local prevC = prev.Container
+                        Tween(prevC, {Time=0.18, Style=Enum.EasingStyle.Quart, Dir=Enum.EasingDirection.In},
+                            {Position=UDim2.new(0,0,0,-10), GroupTransparency=1})
+                        task.delay(0.19, function()
+                            if prevC and prevC.Parent then
+                                prevC.Visible = false
+                                prevC.Position = UDim2.new(0,0,0,0)
+                                prevC.GroupTransparency = 1
+                            end
+                        end)
+                    end
+                    for _, t in pairs(Window.Tabs) do
+                        Tween(t.Button, {Time = 0.2}, {BackgroundTransparency = 1})
+                        local ind = t.Button:FindFirstChild("Frame")
+                        if ind then Tween(ind, {Time = 0.3}, {Size = UDim2.new(0, 3, 0, 0)}) end
+                        local lbl2 = t.Button:FindFirstChildOfClass("TextLabel")
+                        if lbl2 then Tween(lbl2, {Time = 0.2}, {TextColor3 = WindUI.CurrentTheme.SubText}) end
+                        local ico2 = t.Button:FindFirstChildOfClass("ImageLabel")
+                        if ico2 then Tween(ico2, {Time = 0.2}, {ImageColor3 = WindUI.CurrentTheme.SubText}) end
+                        t.Container.Visible = false
+                    end
+                    Window.CurrentTab = SubTab
+                    subContainer_tab.Position = UDim2.new(0, 0, 0, 14)
+                    subContainer_tab.GroupTransparency = 1
+                    subContainer_tab.Visible = true
+                    Tween(subContainer_tab, {Time=0.28, Style=Enum.EasingStyle.Quart, Dir=Enum.EasingDirection.Out},
+                        {Position=UDim2.new(0,0,0,0), GroupTransparency=0})
+                    -- Active style for sub button
+                    Tween(subBtn, {Time = 0.2}, {BackgroundTransparency = 0.84})
+                    Tween(subLbl, {Time = 0.2}, {TextColor3 = WindUI.CurrentTheme.Accent})
+                    subLbl.Font = Enum.Font.GothamBold
+                    -- Also keep parent tab expanded & highlight
+                    Tween(dropLbl, {Time=0.15}, {TextColor3 = WindUI.CurrentTheme.Text})
+                    Tween(dropIcon, {Time=0.15}, {ImageColor3 = WindUI.CurrentTheme.Accent})
+                end
+
+                subBtn.MouseEnter:Connect(function()
+                    if Window.CurrentTab ~= SubTab then
+                        Tween(subBtn, {Time = 0.15}, {BackgroundTransparency = 0.93})
+                        Tween(subLbl, {Time=0.12}, {TextColor3 = WindUI.CurrentTheme.Text})
+                    end
+                end)
+                subBtn.MouseLeave:Connect(function()
+                    if Window.CurrentTab ~= SubTab then
+                        Tween(subBtn, {Time = 0.15}, {BackgroundTransparency = 1})
+                        Tween(subLbl, {Time=0.12}, {TextColor3 = WindUI.CurrentTheme.SubText})
+                    end
+                end)
+                subBtn.MouseButton1Click:Connect(ActivateSub)
+
+                SubTab.CreateButton = Tab.CreateButton
+                SubTab.CreateToggle = Tab.CreateToggle
+                SubTab.CreateSlider = Tab.CreateSlider
+                SubTab.CreateDropdown = Tab.CreateDropdown
+                SubTab.CreateSection = Tab.CreateSection
+                SubTab.CreateInput = Tab.CreateInput
+                SubTab.CreateKeybind = Tab.CreateKeybind
+                SubTab.CreateLabel = Tab.CreateLabel
+                SubTab.CreateParagraph = Tab.CreateParagraph
+                SubTab.CreateCheckbox = Tab.CreateCheckbox
+                SubTab.CreateDivider = Tab.CreateDivider
+                SubTab.CreateCode = Tab.CreateCode
+                SubTab.CreateMultiSection = Tab.CreateMultiSection
+                SubTab.CreateMultiDropdown = Tab.CreateMultiDropdown
+
+                table.insert(Window.Tabs, SubTab)
+                table.insert(subTabs, SubTab)
+            end
+
+            dropBtn.MouseEnter:Connect(function()
+                Tween(dropBtn, {Time = 0.15}, {BackgroundTransparency = 0.88})
+                Tween(dropIcon, {Time = 0.15}, {ImageColor3 = WindUI.CurrentTheme.Text})
+                Tween(dropBtnStroke, {Time=0.15}, {Transparency = 0.5})
+            end)
+            dropBtn.MouseLeave:Connect(function()
+                if not subExpanded then
+                    Tween(dropBtn, {Time = 0.15}, {BackgroundTransparency = 0.94})
+                    Tween(dropIcon, {Time = 0.15}, {ImageColor3 = WindUI.CurrentTheme.SubText})
+                    Tween(dropBtnStroke, {Time=0.15}, {Transparency = 0.7})
+                end
+            end)
+
+            dropBtn.MouseButton1Click:Connect(function()
+                subExpanded = not subExpanded
+                local targetH = subExpanded and (34 + subH + 2) or 34
+                Tween(wrapFrame, {Time = 0.28, Style = Enum.EasingStyle.Quart}, {Size = UDim2.new(1, 0, 0, targetH)})
+                Tween(subContainer, {Time = 0.28, Style = Enum.EasingStyle.Quart}, {Size = UDim2.new(1, -10, 0, subExpanded and subH or 0)})
+                Tween(dropArrow, {Time = 0.25}, {Rotation = subExpanded and 180 or 0})
+                Tween(dropLbl, {Time = 0.15}, {TextColor3 = subExpanded and WindUI.CurrentTheme.Text or WindUI.CurrentTheme.SubText})
+                Tween(dropIcon, {Time = 0.15}, {ImageColor3 = subExpanded and WindUI.CurrentTheme.Accent or WindUI.CurrentTheme.SubText})
+                Tween(dropBtn, {Time = 0.15}, {BackgroundTransparency = subExpanded and 0.82 or 0.94})
+                Tween(dropBtnStroke, {Time=0.15}, {Transparency = subExpanded and 0.4 or 0.7})
+            end)
+
+            return subTabs
         end
 
         table.insert(Window.Tabs, Tab)
         if #Window.Tabs == 1 then Activate() end
-
         return Tab
     end
 
-    -- ── INTERACTIVE COLOR PICKER THEME CONFIG SECTION ───────────────────────
-    function Window:CreateThemeSection(tabObj)
-        tabObj:CreateSection("Custom Interface Theme")
-        
-        local themeCard = Instance.new("Frame", tabObj.Scroll)
-        themeCard.Size = UDim2.new(0.96, 0, 0, 42)
-        themeCard.BackgroundColor3 = WindUI.CurrentTheme.Secondary
-        Instance.new("UICorner", themeCard).CornerRadius = UDim.new(0, 6)
-        local tcStroke = Instance.new("UIStroke", themeCard)
-        tcStroke.Color = WindUI.CurrentTheme.Border
-
-        local themeLabel = Instance.new("TextLabel", themeCard)
-        themeLabel.Text = "Accent Theme Synchronization"
-        themeLabel.Size = UDim2.new(0.6, 0, 1, 0)
-        themeLabel.Position = UDim2.new(0, 14, 0, 0)
-        themeLabel.Font = WindUI.CurrentFont
-        themeLabel.TextColor3 = WindUI.CurrentTheme.Text
-        themeLabel.TextSize = 11
-        themeLabel.TextXAlignment = Enum.TextXAlignment.Left
-        themeLabel.BackgroundTransparency = 1
-
-        local previewSwatch = Instance.new("Frame", themeCard)
-        previewSwatch.Size = UDim2.new(0, 36, 0, 18)
-        previewSwatch.Position = UDim2.new(1, -50, 0.5, -9)
-        previewSwatch.BackgroundColor3 = WindUI.CurrentTheme.Accent
-        Instance.new("UICorner", previewSwatch).CornerRadius = UDim.new(0, 4)
-
-        local openPickerBtn = Instance.new("TextButton", themeCard)
-        openPickerBtn.Size = UDim2.new(1, 0, 1, 0)
-        openPickerBtn.BackgroundTransparency = 1
-        openPickerBtn.Text = ""
-
-        openPickerBtn.MouseButton1Click:Connect(function()
-            local pickerBackdrop = Instance.new("Frame", WindUI.ScreenGui)
-            pickerBackdrop.Size = UDim2.new(1, 0, 1, 0)
-            pickerBackdrop.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-            pickerBackdrop.BackgroundTransparency = 0.65
-
-            local card = Instance.new("Frame", pickerBackdrop)
-            card.Size = UDim2.new(0, 240, 0, 160)
-            card.Position = UDim2.new(0.5, -120, 0.5, -80)
-            card.BackgroundColor3 = WindUI.CurrentTheme.Tertiary
-            Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
-            Instance.new("UIStroke", card).Color = WindUI.CurrentTheme.Border
-
-            local hLbl = Instance.new("TextLabel", card)
-            hLbl.Text = "SELECT ACCENT COLOR"
-            hLbl.Size = UDim2.new(1, 0, 0, 30)
-            hLbl.Font = Enum.Font.GothamBold
-            hLbl.TextSize = 10
-            hLbl.TextColor3 = WindUI.CurrentTheme.Text
-            hLbl.BackgroundTransparency = 1
-
-            -- Standard Color Presets inside Overlay
-            local colors = {Color3.fromRGB(210,32,32), Color3.fromRGB(32,210,32), Color3.fromRGB(32,32,210), Color3.fromRGB(210,210,32), Color3.fromRGB(210,32,210)}
-            for i, col in ipairs(colors) do
-                local cBtn = Instance.new("TextButton", card)
-                cBtn.Size = UDim2.new(0, 30, 0, 30)
-                cBtn.Position = UDim2.new(0, 20 + (i-1)*40, 0, 50)
-                cBtn.BackgroundColor3 = col
-                Instance.new("UICorner", cBtn).CornerRadius = UDim.new(1, 0)
-
-                cBtn.MouseButton1Click:Connect(function()
-                    WindUI:ApplyThemeAccent(col)
-                    previewSwatch.BackgroundColor3 = col
-                    pickerBackdrop:Destroy()
-                end)
-            end
-
-            local close = Instance.new("TextButton", card)
-            close.Text = "Cancel"
-            close.Size = UDim2.new(0, 80, 0, 24)
-            close.Position = UDim2.new(0.5, -40, 1, -34)
-            close.BackgroundColor3 = WindUI.CurrentTheme.Secondary
-            close.Font = WindUI.CurrentFont
-            close.TextColor3 = WindUI.CurrentTheme.Text
-            close.TextSize = 10
-            Instance.new("UICorner", close).CornerRadius = UDim.new(0, 4)
-            close.MouseButton1Click:Connect(function() pickerBackdrop:Destroy() end)
-        end)
-    end
-
-    -- ── INTERACTIVE DISCORD CARD COMPONENT ─────────────────────────────────
-    function Window:CreateDiscordCard(tabObj, inviteLink)
-        local discordCard = Instance.new("Frame", tabObj.Scroll)
-        discordCard.Size = UDim2.new(0.96, 0, 0, 50)
-        discordCard.BackgroundColor3 = WindUI.CurrentTheme.Secondary
-        Instance.new("UICorner", discordCard).CornerRadius = UDim.new(0, 7)
-        local dStroke = Instance.new("UIStroke", discordCard)
-        dStroke.Color = WindUI.CurrentTheme.Border
-
-        local discordIcoBox = Instance.new("Frame", discordCard)
-        discordIcoBox.Size = UDim2.new(0, 30, 0, 30)
-        discordIcoBox.Position = UDim2.new(0, 10, 0.5, -15)
-        discordIcoBox.BackgroundColor3 = WindUI.CurrentTheme.Accent
-        discordIcoBox.BackgroundTransparency = 0.82
-        Instance.new("UICorner", discordIcoBox).CornerRadius = UDim.new(0, 6)
-
-        local dIco = Instance.new("ImageLabel", discordIcoBox)
-        dIco.Size = UDim2.new(0, 14, 0, 14)
-        dIco.Position = UDim2.new(0.5, -7, 0.5, -7)
-        dIco.BackgroundTransparency = 1
-        dIco.ImageColor3 = WindUI.CurrentTheme.Accent
-        task.spawn(function() ApplyIcon(dIco, GetIcon("message-square")) end)
-
-        local dTitle = Instance.new("TextLabel", discordCard)
-        dTitle.Text = "Join Our Discord Community"
-        dTitle.Size = UDim2.new(0.5, 0, 0, 18)
-        dTitle.Position = UDim2.new(0, 48, 0, 8)
-        dTitle.Font = Enum.Font.GothamBold
-        dTitle.TextColor3 = WindUI.CurrentTheme.Text
-        dTitle.TextSize = 11
-        dTitle.TextXAlignment = Enum.TextXAlignment.Left
-        dTitle.BackgroundTransparency = 1
-
-        local dSub = Instance.new("TextLabel", discordCard)
-        dSub.Text = inviteLink or "discord.gg/nanzzz"
-        dSub.Size = UDim2.new(0.5, 0, 0, 14)
-        dSub.Position = UDim2.new(0, 48, 0, 24)
-        dSub.Font = WindUI.CurrentFont
-        dSub.TextColor3 = WindUI.CurrentTheme.SubText
-        dSub.TextSize = 9
-        dSub.TextXAlignment = Enum.TextXAlignment.Left
-        dSub.BackgroundTransparency = 1
-
-        local discordCopy = Instance.new("TextButton", discordCard)
-        discordCopy.Size = UDim2.new(0, 58, 0, 24)
-        discordCopy.Position = UDim2.new(1, -68, 0.5, -12)
-        discordCopy.BackgroundColor3 = WindUI.CurrentTheme.Accent
-        discordCopy.BackgroundTransparency = 0.8
-        discordCopy.Text = "Copy"
-        discordCopy.Font = Enum.Font.GothamBold
-        discordCopy.TextColor3 = WindUI.CurrentTheme.Accent
-        discordCopy.TextSize = 10
-        Instance.new("UICorner", discordCopy).CornerRadius = UDim.new(0, 6)
-        
-        local cStroke = Instance.new("UIStroke", discordCopy)
-        cStroke.Color = WindUI.CurrentTheme.Accent
-        cStroke.Thickness = 1
-        cStroke.Transparency = 0.5
-
-        discordCard.MouseEnter:Connect(function() Tween(discordCard, {Time=0.12}, {BackgroundColor3=WindUI.CurrentTheme.Tertiary}) end)
-        discordCard.MouseLeave:Connect(function() Tween(discordCard, {Time=0.12}, {BackgroundColor3=WindUI.CurrentTheme.Secondary}) end)
-        discordCopy.MouseEnter:Connect(function() Tween(discordCopy, {Time=0.12}, {BackgroundTransparency=0.5}) end)
-        discordCopy.MouseLeave:Connect(function() Tween(discordCopy, {Time=0.12}, {BackgroundTransparency=0.8}) end)
-
-        discordCopy.MouseButton1Click:Connect(function()
-            pcall(function() setclipboard(inviteLink or "discord.gg/nanzzz") end)
-            discordCopy.Text = "Done"
-            discordCopy.TextColor3 = Color3.fromRGB(100, 255, 100)
-            task.delay(2, function()
-                discordCopy.Text = "Copy"
-                discordCopy.TextColor3 = WindUI.CurrentTheme.Accent
-            end)
-        end)
+    function Window:Unload()
+        for _, conn in pairs(WindUI.Connections) do conn:Disconnect() end
+        WindUI.ScreenGui:Destroy()
+        if WindUI.NotifyGui then WindUI.NotifyGui:Destroy() end
     end
 
     return Window
 end
+
 
 return WindUI
